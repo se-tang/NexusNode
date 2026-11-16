@@ -193,3 +193,56 @@ restart_and_verify_service() {
     fi
     return 0
 }
+
+base64_encode_oneline() {
+    printf '%s' "$1" | base64 | tr -d '\r\n'
+}
+
+generate_self_signed_cert() {
+    local cert_dir="$1"
+    local domain="$2"
+    mkdir -p "$cert_dir"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+        -nodes -days 3650 \
+        -keyout "$cert_dir/key.pem" \
+        -out "$cert_dir/cert.pem" \
+        -subj "/CN=$domain" &>/dev/null
+}
+
+prompt_tls_cert() {
+    local cert_dir="$1"
+    local default_domain="${2:-www.bing.com}"
+
+    read -p " └─ 绑定域名 / SNI (留空使用 $default_domain 自签): " input_domain
+    input_domain="$(echo "${input_domain:-}" | tr -d '[:space:]')"
+    TLS_DOMAIN="${input_domain:-$default_domain}"
+
+    if [[ ! "$TLS_DOMAIN" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+        echo -e "${RED}[Error] 非法域名格式: $TLS_DOMAIN${NC}" >&2
+        return 1
+    fi
+
+    read -p " └─ TLS 公钥证书路径 (留空自动生成自签证书): " input_cert
+    input_cert="$(echo "${input_cert:-}" | tr -d '[:space:]')"
+
+    if [[ -n "$input_cert" ]]; then
+        read -p " └─ TLS 私钥路径: " input_key
+        input_key="$(echo "${input_key:-}" | tr -d '[:space:]')"
+        if [[ ! -f "$input_cert" || ! -f "$input_key" ]]; then
+            echo -e "${RED}[Error] 证书或私钥文件不存在。${NC}" >&2
+            return 1
+        fi
+        TLS_CERT_FILE="$input_cert"
+        TLS_KEY_FILE="$input_key"
+        TLS_INSECURE=0
+    else
+        echo -e "${CYAN}[Info]${NC} 正在生成 ECC 自签证书 ($TLS_DOMAIN)..."
+        if ! generate_self_signed_cert "$cert_dir" "$TLS_DOMAIN"; then
+            echo -e "${RED}[Error] 生成自签证书失败。${NC}" >&2
+            return 1
+        fi
+        TLS_CERT_FILE="$cert_dir/cert.pem"
+        TLS_KEY_FILE="$cert_dir/key.pem"
+        TLS_INSECURE=1
+    fi
+}

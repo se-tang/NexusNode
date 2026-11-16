@@ -4,66 +4,114 @@ if [[ -z "${NEXUS_COMMON_LOADED:-}" ]]; then
     source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../utils/common.sh"
 fi
 
+ensure_singbox() {
+    if ! command -v sing-box &>/dev/null; then
+        echo -e "${CYAN}[Info]${NC} 正在安装 sing-box 内核..."
+        curl -fsSL https://sing-box.app/install.sh | sh || true
+        if ! command -v sing-box &>/dev/null; then
+            echo -e "${RED}[Error] 未能自动安装 sing-box 内核，请检查网络或系统源。${NC}"
+            return 1
+        fi
+    fi
+    SB_BIN="$(command -v sing-box)"
+}
+
+deploy_singbox_config() {
+    local port="$1"
+    shift
+    local fw_protos=("$@")
+    [[ ${#fw_protos[@]} -eq 0 ]] && fw_protos=("tcp")
+
+    if ! "$SB_BIN" check -c /etc/sing-box/config.json; then
+        echo -e "${RED}[Error] sing-box 配置文件校验失败。${NC}"
+        return 1
+    fi
+
+    if systemctl is-active --quiet sing-box.service 2>/dev/null; then
+        systemctl disable --now sing-box.service &>/dev/null || true
+    fi
+
+    cat <<EOF > /etc/systemd/system/nexus-singbox.service
+[Unit]
+Description=NexusNode sing-box Service
+After=network.target
+
+[Service]
+ExecStart=${SB_BIN} run -c /etc/sing-box/config.json
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    for p in "${fw_protos[@]}"; do
+        open_firewall_port "$port" "$p"
+    done
+    restart_and_verify_service "nexus-singbox.service"
+}
+
+print_singbox_result() {
+    local title="$1"
+    local share_link="$2"
+    shift 2
+    echo -e "\n${GREEN}==========================================${NC}"
+    echo -e "${GREEN}   节点部署成功 (${title})   ${NC}"
+    echo -e "${GREEN}==========================================${NC}"
+    for line in "$@"; do
+        echo -e " $line"
+    done
+    echo -e "------------------------------------------"
+    echo -e "${CYAN}分享链接:${NC}\n${share_link}"
+    echo -e "${GREEN}==========================================${NC}"
+}
+
 configure_singbox() {
     echo -e "${CYAN}==========================================${NC}"
     echo -e "${CYAN}      NexusNode - sing-box Protocol Menu  ${NC}"
     echo -e "${CYAN}==========================================${NC}"
     echo " 1. VLESS - XTLS-Reality (推荐，高性能)"
-    echo " 2. Hysteria 2 (Hy2)     (暂未开放)"
-    echo " 3. TUIC v5              (暂未开放)"
-    echo " 4. Shadowsocks-2022     (暂未开放)"
-    echo " 5. SOCKS5 / HTTP        (暂未开放)"
+    echo " 2. Hysteria 2 (Hy2)     (恶劣网络/晚高峰加速)"
+    echo " 3. TUIC v5              (极致低时延)"
+    echo " 4. Shadowsocks-2022     (低CPU开销转发)"
+    echo " 5. SOCKS5 / HTTP        (纯净账号代理)"
     echo "------------------------------------------"
     read -p " 请选择协议 [1-5] (默认 1): " proto_choice
     proto_choice=${proto_choice:-1}
 
+    local input_port port pub_ip url_ip
+    read -p " └─ 监听端口 [1-65535] (留空随机): " input_port
+    port="$(get_valid_port "$input_port")" || return 1
+
+    ensure_singbox || return 1
+    pub_ip="$(get_public_ip)"
+    if [[ -z "$pub_ip" ]]; then
+        echo -e "${RED}[Error] 无法获取服务器公网 IP。${NC}"
+        return 1
+    fi
+    url_ip="$(format_ip_for_url "$pub_ip")"
+    mkdir -p /etc/sing-box
+
     case "$proto_choice" in
         1)
             echo -e "\n${CYAN}--- 配置 sing-box VLESS-XTLS-Reality ---${NC}"
-            read -p " └─ 监听端口 [1-65535] (留空随机): " input_port
-            local port
-            port="$(get_valid_port "$input_port")" || return 1
-
             read -p " └─ 伪装域名 SNI (留空自动优选): " input_sni
-            local sni
+            local sni uuid short_id key_pair priv_key pub_key
             sni="$(get_target_sni "$input_sni")" || return 1
-
-            if ! command -v sing-box &>/dev/null; then
-                echo -e "${CYAN}[Info]${NC} 正在安装 sing-box 内核..."
-                curl -fsSL https://sing-box.app/install.sh | sh || true
-                if ! command -v sing-box &>/dev/null; then
-                    echo -e "${RED}[Error] 未能自动安装 sing-box 内核，请检查网络或系统源。${NC}"
-                    return 1
-                fi
-            fi
-
-            local sb_bin
-            sb_bin="$(command -v sing-box)"
-
-            local uuid short_id pub_ip url_ip
             uuid="$(cat /proc/sys/kernel/random/uuid)"
             short_id="$(openssl rand -hex 4)"
-            pub_ip="$(get_public_ip)"
-            if [[ -z "$pub_ip" ]]; then
-                echo -e "${RED}[Error] 无法获取服务器公网 IP。${NC}"
-                return 1
-            fi
-            url_ip="$(format_ip_for_url "$pub_ip")"
 
-            local key_pair priv_key pub_key
-            key_pair="$("$sb_bin" generate reality-keypair 2>/dev/null)" || {
+            key_pair="$("$SB_BIN" generate reality-keypair 2>/dev/null)" || {
                 echo -e "${RED}[Error] 生成 Reality 密钥对失败。${NC}"
                 return 1
             }
             priv_key="$(echo "$key_pair" | awk -F': ' '/PrivateKey/ {print $2}' | tr -d ' "\r\n')"
             pub_key="$(echo "$key_pair" | awk -F': ' '/PublicKey/ {print $2}' | tr -d ' "\r\n')"
-
             if [[ -z "$priv_key" || -z "$pub_key" ]]; then
                 echo -e "${RED}[Error] 解析 sing-box Reality 密钥失败。${NC}"
                 return 1
             fi
 
-            mkdir -p /etc/sing-box
             cat <<EOF > /etc/sing-box/config.json
 {
   "log": { "level": "warn" },
@@ -94,51 +142,168 @@ configure_singbox() {
   "outbounds": [ { "type": "direct", "tag": "direct" } ]
 }
 EOF
+            deploy_singbox_config "$port" "tcp" || return 1
+            local link="vless://$uuid@$url_ip:$port?encryption=none&security=reality&sni=$sni&fp=chrome&pbk=$pub_key&sid=$short_id&type=tcp&flow=xtls-rprx-vision#NexusNode-Singbox-Reality"
+            print_singbox_result "sing-box Reality" "$link" \
+                "地址 (Address): ${pub_ip}" \
+                "端口 (Port):    ${port}" \
+                "UUID:           ${uuid}" \
+                "SNI:            ${sni}" \
+                "Public Key:     ${pub_key}" \
+                "ShortId:        ${short_id}"
+            ;;
+        2)
+            echo -e "\n${CYAN}--- 配置 sing-box Hysteria 2 ---${NC}"
+            prompt_tls_cert "/etc/sing-box/certs" "www.bing.com" || return 1
+            local password
+            password="$(openssl rand -hex 12)"
 
-            if ! "$sb_bin" check -c /etc/sing-box/config.json; then
-                echo -e "${RED}[Error] sing-box 配置文件校验失败。${NC}"
-                return 1
-            fi
-
-            # 避免官方自带的 sing-box.service 占用相同配置或端口
-            if systemctl is-active --quiet sing-box.service 2>/dev/null; then
-                systemctl disable --now sing-box.service &>/dev/null || true
-            fi
-
-            cat <<EOF > /etc/systemd/system/nexus-singbox.service
-[Unit]
-Description=NexusNode sing-box Service
-After=network.target
-
-[Service]
-ExecStart=${sb_bin} run -c /etc/sing-box/config.json
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
+            cat <<EOF > /etc/sing-box/config.json
+{
+  "log": { "level": "warn" },
+  "inbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "hy2-in",
+      "listen": "::",
+      "listen_port": $port,
+      "users": [
+        { "name": "nexus", "password": "$password" }
+      ],
+      "tls": {
+        "enabled": true,
+        "alpn": [ "h3" ],
+        "certificate_path": "$TLS_CERT_FILE",
+        "key_path": "$TLS_KEY_FILE"
+      }
+    }
+  ],
+  "outbounds": [ { "type": "direct", "tag": "direct" } ]
+}
 EOF
+            deploy_singbox_config "$port" "udp" || return 1
+            local host_addr="$url_ip"
+            [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
+            local link="hysteria2://$password@$host_addr:$port?insecure=$TLS_INSECURE&sni=$TLS_DOMAIN#NexusNode-Singbox-Hy2"
+            print_singbox_result "sing-box Hysteria 2" "$link" \
+                "地址 (Address): ${host_addr}" \
+                "端口 (Port):    ${port} (UDP)" \
+                "密码 (Password): ${password}" \
+                "SNI:            ${TLS_DOMAIN}" \
+                "自签跳过验证:   ${TLS_INSECURE}"
+            ;;
+        3)
+            echo -e "\n${CYAN}--- 配置 sing-box TUIC v5 ---${NC}"
+            prompt_tls_cert "/etc/sing-box/certs" "www.bing.com" || return 1
+            local uuid password
+            uuid="$(cat /proc/sys/kernel/random/uuid)"
+            password="$(openssl rand -hex 12)"
 
-            open_firewall_port "$port" "tcp"
-            restart_and_verify_service "nexus-singbox.service" || return 1
+            cat <<EOF > /etc/sing-box/config.json
+{
+  "log": { "level": "warn" },
+  "inbounds": [
+    {
+      "type": "tuic",
+      "tag": "tuic-in",
+      "listen": "::",
+      "listen_port": $port,
+      "users": [
+        { "name": "nexus", "uuid": "$uuid", "password": "$password" }
+      ],
+      "congestion_control": "bbr",
+      "auth_timeout": "3s",
+      "zero_rtt_handshake": false,
+      "heartbeat": "10s",
+      "tls": {
+        "enabled": true,
+        "alpn": [ "h3" ],
+        "certificate_path": "$TLS_CERT_FILE",
+        "key_path": "$TLS_KEY_FILE"
+      }
+    }
+  ],
+  "outbounds": [ { "type": "direct", "tag": "direct" } ]
+}
+EOF
+            deploy_singbox_config "$port" "udp" || return 1
+            local host_addr="$url_ip"
+            [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
+            local link="tuic://$uuid:$password@$host_addr:$port?congestion_control=bbr&alpn=h3&sni=$TLS_DOMAIN&allow_insecure=$TLS_INSECURE#NexusNode-Singbox-TUIC"
+            print_singbox_result "sing-box TUIC v5" "$link" \
+                "地址 (Address): ${host_addr}" \
+                "端口 (Port):    ${port} (UDP)" \
+                "UUID:           ${uuid}" \
+                "密码 (Password): ${password}" \
+                "SNI:            ${TLS_DOMAIN}"
+            ;;
+        4)
+            echo -e "\n${CYAN}--- 配置 sing-box Shadowsocks-2022 ---${NC}"
+            local method="2022-blake3-aes-128-gcm"
+            local password
+            password="$(openssl rand -base64 16)"
 
-            local share_link="vless://$uuid@$url_ip:$port?encryption=none&security=reality&sni=$sni&fp=chrome&pbk=$pub_key&sid=$short_id&type=tcp&flow=xtls-rprx-vision#NexusNode-Singbox-Reality"
+            cat <<EOF > /etc/sing-box/config.json
+{
+  "log": { "level": "warn" },
+  "inbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "ss-in",
+      "listen": "::",
+      "listen_port": $port,
+      "method": "$method",
+      "password": "$password"
+    }
+  ],
+  "outbounds": [ { "type": "direct", "tag": "direct" } ]
+}
+EOF
+            deploy_singbox_config "$port" "tcp" "udp" || return 1
+            local creds_b64
+            creds_b64="$(base64_encode_oneline "${method}:${password}")"
+            local link="ss://${creds_b64}@${url_ip}:${port}#NexusNode-Singbox-SS2022"
+            print_singbox_result "sing-box SS-2022" "$link" \
+                "地址 (Address): ${pub_ip}" \
+                "端口 (Port):    ${port} (TCP/UDP)" \
+                "加密 (Method):  ${method}" \
+                "密钥 (Password): ${password}"
+            ;;
+        5)
+            echo -e "\n${CYAN}--- 配置 sing-box SOCKS5 / HTTP ---${NC}"
+            read -p " └─ 用户名 (留空随机): " input_user
+            local username="${input_user:-nexus_$(openssl rand -hex 3)}"
+            read -p " └─ 密码 (留空随机): " input_pass
+            local password="${input_pass:-$(openssl rand -hex 8)}"
 
-            echo -e "\n${GREEN}==========================================${NC}"
-            echo -e "${GREEN}        节点部署成功 (sing-box Reality)    ${NC}"
-            echo -e "${GREEN}==========================================${NC}"
-            echo -e " 地址 (Address): ${pub_ip}"
-            echo -e " 端口 (Port):    ${port}"
-            echo -e " UUID:           ${uuid}"
-            echo -e " SNI:            ${sni}"
-            echo -e " Public Key:     ${pub_key}"
-            echo -e " ShortId:        ${short_id}"
-            echo -e "------------------------------------------"
-            echo -e "${CYAN}分享链接:${NC}\n${share_link}"
-            echo -e "${GREEN}==========================================${NC}"
+            cat <<EOF > /etc/sing-box/config.json
+{
+  "log": { "level": "warn" },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "::",
+      "listen_port": $port,
+      "users": [
+        { "username": "$username", "password": "$password" }
+      ]
+    }
+  ],
+  "outbounds": [ { "type": "direct", "tag": "direct" } ]
+}
+EOF
+            deploy_singbox_config "$port" "tcp" || return 1
+            local link="socks://${username}:${password}@${url_ip}:${port}#NexusNode-Mixed"
+            print_singbox_result "sing-box SOCKS5/HTTP" "$link" \
+                "地址 (Address): ${pub_ip}" \
+                "端口 (Port):    ${port} (SOCKS5 & HTTP 共用)" \
+                "用户名 (User):  ${username}" \
+                "密码 (Pass):    ${password}"
             ;;
         *)
-            echo -e "${YELLOW}该协议分支暂未实现，敬请期待！${NC}"
+            echo -e "${RED}无效协议选项。${NC}"
+            return 1
             ;;
     esac
 }

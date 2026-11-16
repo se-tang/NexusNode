@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 120" width="480" height="120" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="480" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B1120"/>
+      <stop offset="55%" stop-color="#111C33"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="24" y1="24" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="128" y1="36" x2="360" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#CBD5E1"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Card Container -->
+  <rect x="2" y="2" width="476" height="116" rx="20" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="2"/>
+
+  <!-- Subtle Grid / Network Accent -->
+  <circle cx="430" cy="28" r="36" fill="#38BDF8" fill-opacity="0.06"/>
+  <circle cx="60" cy="60" r="42" fill="#6366F1" fill-opacity="0.10"/>
+
+  <!-- Emblem: Nexus Node Hex/Orbital + Stylized N -->
+  <rect x="24" y="24" width="72" height="72" rx="18" fill="#0F172A" stroke="url(#accentGrad)" stroke-width="2"/>
+  <path d="M43 78V42L77 78V42" stroke="url(#accentGrad)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+
+  <!-- Node Dots -->
+  <circle cx="43" cy="42" r="4.5" fill="#38BDF8"/>
+  <circle cx="43" cy="78" r="4.5" fill="#6366F1"/>
+  <circle cx="77" cy="42" r="4.5" fill="#A855F7"/>
+  <circle cx="77" cy="78" r="4.5" fill="#38BDF8"/>
+
+  <!-- Brand Wordmark -->
+  <text x="118" y="62" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="34" font-weight="800" letter-spacing="-0.5" fill="url(#textGrad)">Nexus<tspan fill="#38BDF8">Node</tspan></text>
+  <text x="120" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="12" font-weight="600" letter-spacing="2.5" fill="#94A3B8">ZERO-PANEL PROXY ENGINE</text>
+</svg>
