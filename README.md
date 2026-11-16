@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./assets/logo.svg" alt="NexusNode" width="460" />
+  <img src="./assets/logo.svg" alt="NexusNode" width="540" />
 
   <p><strong>极简、无面板的 VPS 多协议代理部署引擎</strong></p>
 
