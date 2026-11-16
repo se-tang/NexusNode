@@ -201,12 +201,16 @@ base64_encode_oneline() {
 generate_self_signed_cert() {
     local cert_dir="$1"
     local domain="$2"
+    local pub_ip="${3:-}"
+    local san="DNS:${domain}"
+    [[ -n "$pub_ip" && "$pub_ip" != *:* ]] && san="${san},IP:${pub_ip}"
     mkdir -p "$cert_dir"
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
         -nodes -days 3650 \
         -keyout "$cert_dir/key.pem" \
         -out "$cert_dir/cert.pem" \
-        -subj "/CN=$domain" &>/dev/null
+        -subj "/CN=$domain" \
+        -addext "subjectAltName=${san}" &>/dev/null
 }
 
 prompt_tls_cert() {
@@ -237,7 +241,9 @@ prompt_tls_cert() {
         TLS_INSECURE=0
     else
         echo -e "${CYAN}[Info]${NC} 正在生成 ECC 自签证书 ($TLS_DOMAIN)..."
-        if ! generate_self_signed_cert "$cert_dir" "$TLS_DOMAIN"; then
+        local local_pub_ip
+        local_pub_ip="$(get_public_ip)"
+        if ! generate_self_signed_cert "$cert_dir" "$TLS_DOMAIN" "$local_pub_ip"; then
             echo -e "${RED}[Error] 生成自签证书失败。${NC}" >&2
             return 1
         fi
