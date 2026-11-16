@@ -169,6 +169,7 @@ EOF
         "security": "tls",
         "tlsSettings": {
           "serverName": "$TLS_DOMAIN",
+          "alpn": [ "http/1.1" ],
           "certificates": [
             { "certificateFile": "$TLS_CERT_FILE", "keyFile": "$TLS_KEY_FILE" }
           ]
@@ -185,7 +186,7 @@ EOF
             deploy_xray_config "$port" "tcp" || return 1
             local host_addr="$url_ip"
             [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
-            local link="vless://$uuid@$host_addr:$port?encryption=none&security=tls&sni=$TLS_DOMAIN&allowInsecure=$TLS_INSECURE&type=ws&path=$ws_path#NexusNode-Xray-VLESS-WS"
+            local link="vless://$uuid@$host_addr:$port?encryption=none&security=tls&sni=$TLS_DOMAIN&alpn=http%2F1.1&allowInsecure=$TLS_INSECURE&type=ws&path=$ws_path#NexusNode-Xray-VLESS-WS"
             print_xray_result "Xray-VLESS-WS+TLS" "$link" \
                 "地址 (Address): ${host_addr}" \
                 "端口 (Port):    ${port}" \
@@ -216,6 +217,7 @@ EOF
         "security": "tls",
         "tlsSettings": {
           "serverName": "$TLS_DOMAIN",
+          "alpn": [ "h2" ],
           "certificates": [
             { "certificateFile": "$TLS_CERT_FILE", "keyFile": "$TLS_KEY_FILE" }
           ]
