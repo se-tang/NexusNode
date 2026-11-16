@@ -3,22 +3,46 @@
 [[ $EUID -ne 0 ]] && echo -e "\033[31m[Error] 请以 Root 权限运行此脚本！\033[0m" && exit 1
 
 REPO_TAR_URL="https://github.com/se-tang/NexusNode/archive/refs/heads/main.tar.gz"
+REPO_SHA_URL="https://api.github.com/repos/se-tang/NexusNode/commits/main"
 INSTALL_DIR="/opt/NexusNode"
+VERSION_FILE="${INSTALL_DIR}/.version"
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
-if [[ -z "$DIR" || ! -f "$DIR/utils/common.sh" || ! -f "$DIR/core/xray.sh" || ! -f "$DIR/core/singbox.sh" ]]; then
-    echo -e "\033[36m[Info] 检测到远程执行或目录不完整，正在拉取项目到 ${INSTALL_DIR}...\033[0m"
+fetch_remote_sha() {
+    curl -fsSL --connect-timeout 3 --max-time 5 -H "Accept: application/vnd.github.sha" "$REPO_SHA_URL" 2>/dev/null | tr -d '[:space:]' || true
+}
+
+download_and_exec() {
+    local sha="${1:-}"
     if ! command -v curl &>/dev/null || ! command -v tar &>/dev/null; then
         echo -e "\033[31m[Error] 缺少 curl 或 tar，无法自动拉取项目。\033[0m"
         exit 1
     fi
     rm -rf "$INSTALL_DIR"
     mkdir -p "$INSTALL_DIR"
-    if curl -fsSL "$REPO_TAR_URL" | tar -xz -C "$INSTALL_DIR" --strip-components=1; then
+    if curl -fsSL --connect-timeout 5 --max-time 30 "$REPO_TAR_URL" | tar -xz -C "$INSTALL_DIR" --strip-components=1; then
+        [[ -n "$sha" ]] && echo "$sha" > "$VERSION_FILE"
         exec bash "$INSTALL_DIR/install.sh" "$@"
     else
         echo -e "\033[31m[Error] 拉取 NexusNode 失败，请检查网络连接。\033[0m"
         exit 1
+    fi
+}
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+if [[ -z "$DIR" || ! -f "$DIR/utils/common.sh" || ! -f "$DIR/core/xray.sh" || ! -f "$DIR/core/singbox.sh" ]]; then
+    local_sha=""
+    [[ -f "$VERSION_FILE" ]] && local_sha="$(tr -d '[:space:]' < "$VERSION_FILE")"
+    remote_sha="$(fetch_remote_sha)"
+
+    if [[ -f "$INSTALL_DIR/install.sh" && -f "$INSTALL_DIR/utils/common.sh" && -f "$INSTALL_DIR/core/xray.sh" && -f "$INSTALL_DIR/core/singbox.sh" ]]; then
+        if [[ -z "$remote_sha" || "$local_sha" == "$remote_sha" ]]; then
+            exec bash "$INSTALL_DIR/install.sh" "$@"
+        fi
+        echo -e "\033[36m[Info] 检测到新版本，正在同步更新 NexusNode...\033[0m"
+        download_and_exec "$remote_sha" "$@"
+    else
+        echo -e "\033[36m[Info] 首次运行，正在拉取 NexusNode 到 ${INSTALL_DIR}...\033[0m"
+        download_and_exec "$remote_sha" "$@"
     fi
 fi
 
