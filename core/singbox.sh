@@ -73,10 +73,11 @@ configure_singbox() {
     echo " 1. VLESS - XTLS-Reality (推荐，高性能)"
     echo " 2. Hysteria 2 (Hy2)     (恶劣网络/晚高峰加速)"
     echo " 3. TUIC v5              (极致低时延)"
-    echo " 4. Shadowsocks-2022     (低CPU开销转发)"
-    echo " 5. SOCKS5 / HTTP        (纯净账号代理)"
+    echo " 4. AnyTLS               (新一代抗 TLS 指纹)"
+    echo " 5. Shadowsocks-2022     (低CPU开销转发)"
+    echo " 6. SOCKS5 / HTTP        (纯净账号代理)"
     echo "------------------------------------------"
-    read -p " 请选择协议 [1-5] (默认 1): " proto_choice
+    read -p " 请选择协议 [1-6] (默认 1): " proto_choice
     proto_choice=${proto_choice:-1}
 
     local input_port port pub_ip url_ip
@@ -155,8 +156,8 @@ EOF
         2)
             echo -e "\n${CYAN}--- 配置 sing-box Hysteria 2 ---${NC}"
             prompt_tls_cert "/etc/sing-box/certs" "www.bing.com" || return 1
-            read -p " └─ 开启 Salamander 混淆抗 UDP 阻断 [Y/n] (默认 Y): " use_obfs
-            use_obfs="${use_obfs:-Y}"
+            read -p " └─ 开启 Salamander 混淆抗 UDP 阻断 [y/N] (默认 N): " use_obfs
+            use_obfs="${use_obfs:-N}"
 
             local password obfs_block="" obfs_query="" obfs_info="关闭"
             password="$(openssl rand -hex 12)"
@@ -252,6 +253,45 @@ EOF
                 "SNI:            ${TLS_DOMAIN}"
             ;;
         4)
+            echo -e "\n${CYAN}--- 配置 sing-box AnyTLS ---${NC}"
+            prompt_tls_cert "/etc/sing-box/certs" "www.bing.com" || return 1
+            local password
+            password="$(openssl rand -hex 12)"
+
+            cat <<EOF > /etc/sing-box/config.json
+{
+  "log": { "level": "warn" },
+  "inbounds": [
+    {
+      "type": "anytls",
+      "tag": "anytls-in",
+      "listen": "::",
+      "listen_port": $port,
+      "users": [
+        { "name": "nexus", "password": "$password" }
+      ],
+      "tls": {
+        "enabled": true,
+        "certificate_path": "$TLS_CERT_FILE",
+        "key_path": "$TLS_KEY_FILE"
+      }
+    }
+  ],
+  "outbounds": [ { "type": "direct", "tag": "direct" } ]
+}
+EOF
+            deploy_singbox_config "$port" "tcp" || return 1
+            local host_addr="$url_ip"
+            [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
+            local link="anytls://${password}@${host_addr}:${port}/?sni=${TLS_DOMAIN}&insecure=${TLS_INSECURE}#NexusNode-Singbox-AnyTLS"
+            print_singbox_result "sing-box AnyTLS" "$link" \
+                "地址 (Address): ${host_addr}" \
+                "端口 (Port):    ${port} (TCP)" \
+                "密码 (Password): ${password}" \
+                "SNI:            ${TLS_DOMAIN}" \
+                "自签跳过验证:   ${TLS_INSECURE}"
+            ;;
+        5)
             echo -e "\n${CYAN}--- 配置 sing-box Shadowsocks-2022 ---${NC}"
             local method="2022-blake3-aes-128-gcm"
             local password
@@ -283,7 +323,7 @@ EOF
                 "加密 (Method):  ${method}" \
                 "密钥 (Password): ${password}"
             ;;
-        5)
+        6)
             echo -e "\n${CYAN}--- 配置 sing-box SOCKS5 / HTTP ---${NC}"
             read -p " └─ 用户名 (留空随机): " input_user
             local username="${input_user:-nexus_$(openssl rand -hex 3)}"

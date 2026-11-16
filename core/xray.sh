@@ -62,17 +62,32 @@ print_xray_result() {
     echo -e "${GREEN}==========================================${NC}"
 }
 
+generate_xray_reality_keys() {
+    local key_pair
+    key_pair="$("$XRAY_BIN" x25519 2>/dev/null)" || {
+        echo -e "${RED}[Error] 生成 X25519 密钥对失败。${NC}"
+        return 1
+    }
+    REALITY_PRIV_KEY="$(echo "$key_pair" | awk -F': ' '/Private[[:space:]]*[Kk]ey/ {print $2}' | tr -d ' "\r\n')"
+    REALITY_PUB_KEY="$(echo "$key_pair" | awk -F': ' '/(Public[[:space:]]*[Kk]ey|Password)/ {print $2}' | head -n 1 | tr -d ' "\r\n')"
+    if [[ -z "$REALITY_PRIV_KEY" || -z "$REALITY_PUB_KEY" ]]; then
+        echo -e "${RED}[Error] 解析 Xray X25519 密钥失败。${NC}"
+        return 1
+    fi
+}
+
 configure_xray() {
     echo -e "${CYAN}==========================================${NC}"
     echo -e "${CYAN}       NexusNode - Xray Protocol Menu     ${NC}"
     echo -e "${CYAN}==========================================${NC}"
-    echo " 1. VLESS - XTLS-Reality (推荐，免域名/防封锁)"
-    echo " 2. VLESS - WS + TLS     (支持 CDN / 自签证书)"
-    echo " 3. VLESS - gRPC + TLS   (多路复用 / 抗干扰)"
-    echo " 4. Trojan - gRPC / TLS  (伪装 HTTPS 流量)"
-    echo " 5. VMess - WS           (传统兼容，免域名)"
+    echo " 1. VLESS - XTLS-Reality  (推荐，免域名/防封锁)"
+    echo " 2. VLESS - XHTTP+Reality (新一代抗 DPI，免域名)"
+    echo " 3. VLESS - WS + TLS      (需自有域名 / CDN)"
+    echo " 4. VLESS - gRPC + TLS    (需自有域名 / CDN)"
+    echo " 5. Trojan - gRPC / TLS   (需自有域名 / CDN)"
+    echo " 6. VMess - WS            (仅限内网/中转，勿直连)"
     echo "------------------------------------------"
-    read -p " 请选择协议 [1-5] (默认 1): " proto_choice
+    read -p " 请选择协议 [1-6] (默认 1): " proto_choice
     proto_choice=${proto_choice:-1}
 
     local input_port port pub_ip url_ip uuid
@@ -93,20 +108,10 @@ configure_xray() {
         1)
             echo -e "\n${CYAN}--- 配置 VLESS-XTLS-Reality ---${NC}"
             read -p " └─ 伪装域名 SNI (留空自动优选): " input_sni
-            local sni short_id key_pair priv_key pub_key
+            local sni short_id
             sni="$(get_target_sni "$input_sni")" || return 1
             short_id="$(openssl rand -hex 4)"
-
-            key_pair="$("$XRAY_BIN" x25519 2>/dev/null)" || {
-                echo -e "${RED}[Error] 生成 X25519 密钥对失败。${NC}"
-                return 1
-            }
-            priv_key="$(echo "$key_pair" | awk -F': ' '/Private[[:space:]]*[Kk]ey/ {print $2}' | tr -d ' "\r\n')"
-            pub_key="$(echo "$key_pair" | awk -F': ' '/(Public[[:space:]]*[Kk]ey|Password)/ {print $2}' | head -n 1 | tr -d ' "\r\n')"
-            if [[ -z "$priv_key" || -z "$pub_key" ]]; then
-                echo -e "${RED}[Error] 解析 Xray X25519 密钥失败。${NC}"
-                return 1
-            fi
+            generate_xray_reality_keys || return 1
 
             cat <<EOF > /usr/local/etc/xray/config.json
 {
@@ -127,7 +132,7 @@ configure_xray() {
           "dest": "$sni:443",
           "xver": 0,
           "serverNames": [ "$sni" ],
-          "privateKey": "$priv_key",
+          "privateKey": "$REALITY_PRIV_KEY",
           "shortIds": [ "$short_id" ]
         }
       }
@@ -137,16 +142,70 @@ configure_xray() {
 }
 EOF
             deploy_xray_config "$port" "tcp" || return 1
-            local link="vless://$uuid@$url_ip:$port?encryption=none&security=reality&sni=$sni&fp=chrome&pbk=$pub_key&sid=$short_id&type=tcp&flow=xtls-rprx-vision#NexusNode-Xray-Reality"
+            local link="vless://$uuid@$url_ip:$port?encryption=none&security=reality&sni=$sni&fp=chrome&pbk=$REALITY_PUB_KEY&sid=$short_id&type=tcp&flow=xtls-rprx-vision#NexusNode-Xray-Reality"
             print_xray_result "Xray-Reality" "$link" \
                 "地址 (Address): ${pub_ip}" \
                 "端口 (Port):    ${port}" \
                 "UUID:           ${uuid}" \
                 "SNI:            ${sni}" \
-                "Public Key:     ${pub_key}" \
+                "Public Key:     ${REALITY_PUB_KEY}" \
                 "ShortId:        ${short_id}"
             ;;
         2)
+            echo -e "\n${CYAN}--- 配置 VLESS-XHTTP+Reality ---${NC}"
+            read -p " └─ 伪装域名 SNI (留空自动优选): " input_sni
+            local sni short_id xhttp_path
+            sni="$(get_target_sni "$input_sni")" || return 1
+            read -p " └─ XHTTP 路径 (默认 /xhttp): " xhttp_path
+            xhttp_path="${xhttp_path:-/xhttp}"
+            [[ "$xhttp_path" != /* ]] && xhttp_path="/$xhttp_path"
+            short_id="$(openssl rand -hex 4)"
+            generate_xray_reality_keys || return 1
+
+            cat <<EOF > /usr/local/etc/xray/config.json
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [
+    {
+      "port": $port,
+      "protocol": "vless",
+      "settings": {
+        "clients": [ { "id": "$uuid" } ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "reality",
+        "xhttpSettings": {
+          "path": "$xhttp_path",
+          "mode": "auto"
+        },
+        "realitySettings": {
+          "show": false,
+          "dest": "$sni:443",
+          "xver": 0,
+          "serverNames": [ "$sni" ],
+          "privateKey": "$REALITY_PRIV_KEY",
+          "shortIds": [ "$short_id" ]
+        }
+      }
+    }
+  ],
+  "outbounds": [ { "protocol": "freedom" } ]
+}
+EOF
+            deploy_xray_config "$port" "tcp" || return 1
+            local link="vless://$uuid@$url_ip:$port?encryption=none&security=reality&sni=$sni&fp=chrome&pbk=$REALITY_PUB_KEY&sid=$short_id&type=xhttp&path=$xhttp_path&mode=auto#NexusNode-Xray-XHTTP-Reality"
+            print_xray_result "Xray-XHTTP+Reality" "$link" \
+                "地址 (Address): ${pub_ip}" \
+                "端口 (Port):    ${port}" \
+                "UUID:           ${uuid}" \
+                "SNI:            ${sni}" \
+                "XHTTP Path:     ${xhttp_path}" \
+                "Public Key:     ${REALITY_PUB_KEY}" \
+                "ShortId:        ${short_id}"
+            ;;
+        3)
             echo -e "\n${CYAN}--- 配置 VLESS-WS+TLS ---${NC}"
             prompt_tls_cert "/usr/local/etc/xray/certs" "www.bing.com" || return 1
             read -p " └─ WebSocket 路径 (默认 /ws): " ws_path
@@ -194,7 +253,7 @@ EOF
                 "WS Path:        ${ws_path}" \
                 "自签证书跳过验证: ${TLS_INSECURE}"
             ;;
-        3)
+        4)
             echo -e "\n${CYAN}--- 配置 VLESS-gRPC+TLS ---${NC}"
             prompt_tls_cert "/usr/local/etc/xray/certs" "www.bing.com" || return 1
             read -p " └─ gRPC ServiceName (默认 grpc): " grpc_svc
@@ -240,7 +299,7 @@ EOF
                 "SNI:            ${TLS_DOMAIN}" \
                 "ServiceName:    ${grpc_svc}"
             ;;
-        4)
+        5)
             echo -e "\n${CYAN}--- 配置 Trojan-gRPC/TLS ---${NC}"
             prompt_tls_cert "/usr/local/etc/xray/certs" "www.bing.com" || return 1
             read -p " └─ 传输方式 [1. TLS(TCP)  2. gRPC+TLS] (默认 1): " t_mode
@@ -295,7 +354,7 @@ EOF
                 "SNI:            ${TLS_DOMAIN}" \
                 "传输 (Network): ${net_type}"
             ;;
-        5)
+        6)
             echo -e "\n${CYAN}--- 配置 VMess-WS ---${NC}"
             read -p " └─ WebSocket 路径 (默认 /vmess): " ws_path
             ws_path="${ws_path:-/vmess}"
