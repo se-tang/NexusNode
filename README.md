@@ -89,12 +89,12 @@ flowchart LR
 ## Cloudflare CDN 指南
 
 <details>
-<summary>点击展开：如何在 Cloudflare 上配合 Xray 3 / 4 使用优选 IP（零手动拷证书）</summary>
+<summary>点击展开：配合 CF 小黄云与优选 IP 使用</summary>
 
-1. 在 Cloudflare `DNS` 添加一条 `A` 记录指向 VPS IP（首次申请证书时先保持**灰云**）。
-2. 运行 `nx` → `1. Xray-core` → `3. VLESS - WS + TLS`（或 `4. gRPC`），输入域名，脚本会自动通过 `acme.sh` 申请并复用 Let's Encrypt 正式证书。
-3. 确认 Cloudflare `SSL/TLS → 概述` 为 **`完全 (Full)`** 或 **`完全(严格)`**；若用 gRPC，在 `网络 (Network)` 开启 **`gRPC`**。
-4. 在 Cloudflare 打开**小黄云**（推荐服务端使用 **`443`** 端口，兼容性最好），客户端可直接导入链接或将节点地址替换为 CF 优选 IP / 优选域名。
+1. 在 Cloudflare 添加一条灰云 A 记录指向 VPS IP。
+2. 运行 nx 选择 Xray 的 WS+TLS 或 gRPC+TLS，输入域名后脚本会自动申请证书（建议选 443 端口）。
+3. 将 Cloudflare 的 SSL 模式设为 Full（或 Full Strict）；如用 gRPC，在网络设置中开启 gRPC。
+4. 打开小黄云即可使用，客户端可将节点地址替换为 CF 优选 IP 或优选域名。
 
 </details>
 
