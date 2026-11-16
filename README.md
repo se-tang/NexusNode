@@ -17,17 +17,17 @@
   </p>
 
   <p>
-    <a href="#快速开始">快速开始</a> ·
-    <a href="#支持协议">支持协议</a> ·
-    <a href="#智能部署流程">智能流程</a> ·
-    <a href="#cloudflare-cdn-指南">CF CDN 指南</a> ·
-    <a href="#项目结构">项目结构</a>
+    <a href="#-快速开始">快速开始</a> ·
+    <a href="#-支持协议">支持协议</a> ·
+    <a href="#-智能部署流程">智能流程</a> ·
+    <a href="#-cloudflare-cdn-指南">CF CDN 指南</a> ·
+    <a href="#-项目结构">项目结构</a>
   </p>
 </div>
 
 ---
 
-## 快速开始
+## 🚀 快速开始
 
 以 root 身份在 Linux VPS 上执行：
 
@@ -59,22 +59,22 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 
 ---
 
-## 支持协议
+## 🧩 支持协议
 
 ### Xray-core
-- ✅ **VLESS - XTLS-Reality** — 免域名首选，借壳大厂 TLS 证书防主动探测
-- ✅ **VLESS - XHTTP+Reality** — 新一代抗 DPI 传输层，免域名直连
-- ✅ **VLESS - WS + TLS** — 支持 Cloudflare CDN 与优选 IP 中转
-- ✅ **VLESS - gRPC + TLS** — 多路复用抗干扰（支持 CF CDN）
-- ✅ **Trojan - gRPC / TLS** — gRPC 支持 CF CDN，TCP 限灰云直连
+- 🛡️ **VLESS - XTLS-Reality** — 免域名首选，借壳大厂 TLS 证书防主动探测
+- 🔀 **VLESS - XHTTP+Reality** — 新一代抗 DPI 传输层，免域名直连
+- ☁️ **VLESS - WS + TLS** — 支持 Cloudflare CDN 与优选 IP 中转
+- 📡 **VLESS - gRPC + TLS** — 多路复用抗干扰（支持 CF CDN）
+- 🔒 **Trojan - gRPC / TLS** — gRPC 支持 CF CDN，TCP 限灰云直连
 
 ### sing-box
-- ✅ **VLESS - XTLS-Reality** — sing-box 内核版 Reality 主力
-- ✅ **Hysteria 2 (Hy2)** — 晚高峰 / 高丢包 QUIC 加速，自带 pinSHA256
-- ✅ **TUIC v5** — 极致低延迟 QUIC 方案
-- ✅ **AnyTLS** — 缓解传统 TLS-in-TLS 握手特征
-- ✅ **Shadowsocks-2022** — 低 CPU 开销，适合中转与落地
-- ✅ **SOCKS5 / HTTP** — 单端口双协议账号代理
+- 🛡️ **VLESS - XTLS-Reality** — sing-box 内核版 Reality 主力
+- 🚀 **Hysteria 2 (Hy2)** — 晚高峰 / 高丢包 QUIC 加速，自带 pinSHA256
+- ⚡ **TUIC v5** — 极致低延迟 QUIC 方案
+- 🎭 **AnyTLS** — 缓解传统 TLS-in-TLS 握手特征
+- 📦 **Shadowsocks-2022** — 低 CPU 开销，适合中转与落地
+- 🔌 **SOCKS5 / HTTP** — 单端口双协议账号代理
 
 > [!NOTE]
 > **零域名推荐**：直接使用 Reality、XHTTP、Hy2、TUIC 或 AnyTLS。<br/>
@@ -82,7 +82,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 
 ---
 
-## 智能部署流程
+## ⚡ 智能部署流程
 
 ```mermaid
 flowchart LR
@@ -95,13 +95,13 @@ flowchart LR
     D & F & G --> H["校验配置 · 放行防火墙 · 输出分享链接"]
 ```
 
-- ✅ **无面板零驻留**：纯 Bash + systemd 托管，零常驻内存占用
-- ✅ **自动环境兜底**：自动补齐缺失依赖、校验配置、放行 ufw / firewalld 端口
-- ✅ **双栈全兼容**：自动识别 IPv4 与纯 IPv6 环境，直接输出标准客户端链接
+- 🪶 **无面板零驻留**：纯 Bash + systemd 托管，零常驻内存占用
+- 🧰 **自动环境兜底**：自动补齐缺失依赖、校验配置、放行 ufw / firewalld 端口
+- 🌐 **双栈全兼容**：自动识别 IPv4 与纯 IPv6 环境，直接输出标准客户端链接
 
 ---
 
-## Cloudflare CDN 指南
+## ☁️ Cloudflare CDN 指南
 
 > [!TIP]
 > 配合 CF 小黄云使用 **Xray WS+TLS / gRPC+TLS**，只需在 CF 添加一条灰云 A 记录，无需手动拷贝证书。
@@ -118,7 +118,7 @@ flowchart LR
 
 ---
 
-## 项目结构
+## 📁 项目结构
 
 ```text
 NexusNode/
@@ -132,7 +132,7 @@ NexusNode/
     └── logo.svg
 ```
 
-### 推荐客户端
+### 📱 推荐客户端
 
 * **全平台**：[v2rayN](https://github.com/2dust/v2rayN) · [Karing](https://github.com/KaringX/karing) · [Hiddify](https://github.com/hiddify/hiddify-app) · [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev)
 * **iOS / macOS**：Shadowrocket · Stash · Surge
