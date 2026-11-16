@@ -145,6 +145,32 @@ get_random_port() {
     return 1
 }
 
+get_cf_https_port() {
+    local p
+    for p in 8443 2053 2083 2087 2096 443; do
+        if ! is_port_in_use "$p"; then
+            echo "$p"
+            return 0
+        fi
+    done
+    echo "8443"
+}
+
+# 返回 0=直连本机(灰云), 1=疑似CDN代理(小黄云/其他IP), 2=未解析
+check_domain_direct_status() {
+    local domain="$1"
+    local pub_ip="$2"
+    local resolved_ips
+    resolved_ips="$(getent ahosts "$domain" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+    if [[ -z "$resolved_ips" ]]; then
+        return 2
+    fi
+    if echo "$resolved_ips" | grep -qxF "$pub_ip"; then
+        return 0
+    fi
+    return 1
+}
+
 get_valid_port() {
     local input_port="${1:-}"
     input_port="$(echo "$input_port" | tr -d '[:space:]')"
@@ -298,6 +324,91 @@ issue_acme_cert() {
         echo -e "${RED}[Error] 安装证书文件失败。${NC}" >&2
         return 1
     fi
+}
+
+prompt_required_domain() {
+    local pub_ip="$1"
+    read -p " └─ 绑定自有域名 (例如 node.example.com): " input_domain
+    input_domain="$(echo "${input_domain:-}" | tr -d '[:space:]')"
+    if [[ -z "$input_domain" ]]; then
+        echo -e "${RED}[Error] 该协议必须绑定自有域名。${NC}" >&2
+        return 1
+    fi
+    TLS_DOMAIN="$(get_target_sni "$input_domain")" || return 1
+
+    DOMAIN_IS_CF=0
+    local rc=0
+    check_domain_direct_status "$TLS_DOMAIN" "$pub_ip" || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        echo -e "${GREEN}[Info]${NC} 域名检测: ${GREEN}直连本机 (灰云)${NC}，支持任意端口与自动申请 Let's Encrypt 证书。"
+        DOMAIN_IS_CF=0
+    elif [[ $rc -eq 1 ]]; then
+        echo -e "${YELLOW}[Info]${NC} 域名检测: ${YELLOW}指向非本机 IP (疑似已开 CF 小黄云 CDN)${NC}，将自动匹配 CF HTTPS 端口。"
+        DOMAIN_IS_CF=1
+    else
+        echo -e "${YELLOW}[Warn]${NC} 域名暂未解析出 IP，请确认已在 DNS 面板配置 A 记录。"
+        DOMAIN_IS_CF=2
+    fi
+}
+
+prompt_cert_for_domain() {
+    local cert_dir="$1"
+    local domain="$2"
+    local is_cf="${3:-0}"
+    local domain_cert_dir="${cert_dir}/${domain}"
+
+    local default_choice=1
+    if [[ "$is_cf" -eq 1 ]] && [[ ! -s "${domain_cert_dir}/cert.pem" ]]; then
+        default_choice=2
+    fi
+
+    echo "    证书获取方式:"
+    echo "      1. 自动申请/复用 Let's Encrypt 正式证书 (推荐，申请时需灰云直连)"
+    echo "      2. 自动生成自签证书 (适合已开 CF 小黄云且 SSL 为 Full 模式)"
+    echo "      3. 手动输入已有证书路径"
+    read -p " └─ 请选择 [1-3] (默认 ${default_choice}): " cert_mode
+    cert_mode="${cert_mode:-$default_choice}"
+
+    case "$cert_mode" in
+        1)
+            issue_acme_cert "$domain_cert_dir" "$domain" || return 1
+            TLS_CERT_FILE="${domain_cert_dir}/cert.pem"
+            TLS_KEY_FILE="${domain_cert_dir}/key.pem"
+            TLS_INSECURE=0
+            TLS_CERT_SHA256=""
+            ;;
+        2)
+            echo -e "${CYAN}[Info]${NC} 正在生成 ECC 自签证书 ($domain)..."
+            local local_pub_ip
+            local_pub_ip="$(get_public_ip)"
+            if ! generate_self_signed_cert "$cert_dir" "$domain" "$local_pub_ip"; then
+                echo -e "${RED}[Error] 生成自签证书失败。${NC}" >&2
+                return 1
+            fi
+            TLS_CERT_FILE="$cert_dir/cert.pem"
+            TLS_KEY_FILE="$cert_dir/key.pem"
+            TLS_INSECURE=1
+            TLS_CERT_SHA256="$(openssl x509 -in "$TLS_CERT_FILE" -noout -fingerprint -sha256 2>/dev/null | awk -F= '{print $2}' | tr -d ':\r\n' | tr 'A-F' 'a-f')"
+            ;;
+        3)
+            read -p " └─ TLS 公钥证书路径: " input_cert
+            read -p " └─ TLS 私钥路径: " input_key
+            input_cert="$(echo "${input_cert:-}" | tr -d '[:space:]')"
+            input_key="$(echo "${input_key:-}" | tr -d '[:space:]')"
+            if [[ ! -f "$input_cert" || ! -f "$input_key" ]]; then
+                echo -e "${RED}[Error] 证书或私钥文件不存在。${NC}" >&2
+                return 1
+            fi
+            TLS_CERT_FILE="$input_cert"
+            TLS_KEY_FILE="$input_key"
+            TLS_INSECURE=0
+            TLS_CERT_SHA256=""
+            ;;
+        *)
+            echo -e "${RED}[Error] 无效选项。${NC}" >&2
+            return 1
+            ;;
+    esac
 }
 
 prompt_tls_cert() {

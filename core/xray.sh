@@ -89,14 +89,6 @@ configure_xray() {
     read -p " 请选择协议 [1-5] (默认 1): " proto_choice
     proto_choice=${proto_choice:-1}
 
-    local input_port port pub_ip url_ip uuid
-    if [[ "$proto_choice" == "3" || "$proto_choice" == "4" || "$proto_choice" == "5" ]]; then
-        read -p " └─ 监听端口 (开 CF 小黄云请填 443/2053/2083/2087/2096/8443，留空随机): " input_port
-    else
-        read -p " └─ 监听端口 [1-65535] (留空随机): " input_port
-    fi
-    port="$(get_valid_port "$input_port")" || return 1
-
     ensure_xray || return 1
     pub_ip="$(get_public_ip)"
     if [[ -z "$pub_ip" ]]; then
@@ -106,6 +98,26 @@ configure_xray() {
     url_ip="$(format_ip_for_url "$pub_ip")"
     uuid="$(cat /proc/sys/kernel/random/uuid)"
     mkdir -p /usr/local/etc/xray
+
+    local input_port port
+    if [[ "$proto_choice" == "3" || "$proto_choice" == "4" || "$proto_choice" == "5" ]]; then
+        prompt_required_domain "$pub_ip" || return 1
+        if [[ "${DOMAIN_IS_CF:-0}" -eq 1 ]]; then
+            read -p " └─ 监听端口 (CF CDN 仅支持 443/2053/2083/2087/2096/8443，留空自动选用): " input_port
+            if [[ -z "$(echo "${input_port:-}" | tr -d '[:space:]')" ]]; then
+                port="$(get_cf_https_port)"
+            else
+                port="$(get_valid_port "$input_port")" || return 1
+            fi
+        else
+            read -p " └─ 监听端口 [1-65535] (留空随机): " input_port
+            port="$(get_valid_port "$input_port")" || return 1
+        fi
+        prompt_cert_for_domain "/usr/local/etc/xray/certs" "$TLS_DOMAIN" "$DOMAIN_IS_CF" || return 1
+    elif [[ "$proto_choice" == "1" || "$proto_choice" == "2" ]]; then
+        read -p " └─ 监听端口 [1-65535] (留空随机): " input_port
+        port="$(get_valid_port "$input_port")" || return 1
+    fi
 
     case "$proto_choice" in
         1)
@@ -210,7 +222,6 @@ EOF
             ;;
         3)
             echo -e "\n${CYAN}--- 配置 VLESS-WS+TLS ---${NC}"
-            prompt_tls_cert "/usr/local/etc/xray/certs" "required" || return 1
             read -p " └─ WebSocket 路径 (默认 /ws): " ws_path
             ws_path="${ws_path:-/ws}"
             [[ "$ws_path" != /* ]] && ws_path="/$ws_path"
@@ -258,7 +269,6 @@ EOF
             ;;
         4)
             echo -e "\n${CYAN}--- 配置 VLESS-gRPC+TLS ---${NC}"
-            prompt_tls_cert "/usr/local/etc/xray/certs" "required" || return 1
             read -p " └─ gRPC ServiceName (默认 grpc): " grpc_svc
             grpc_svc="${grpc_svc:-grpc}"
 
@@ -305,7 +315,6 @@ EOF
             ;;
         5)
             echo -e "\n${CYAN}--- 配置 Trojan-gRPC/TLS ---${NC}"
-            prompt_tls_cert "/usr/local/etc/xray/certs" "required" || return 1
             read -p " └─ 传输方式 [1. TLS(TCP)  2. gRPC+TLS] (默认 1): " t_mode
             t_mode="${t_mode:-1}"
             local password
