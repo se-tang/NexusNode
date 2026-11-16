@@ -62,19 +62,19 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 ## 🧩 支持协议
 
 ### Xray-core
-- 🛡️ **VLESS - XTLS-Reality** — 免域名首选，借壳大厂 TLS 证书防主动探测
-- 🔀 **VLESS - XHTTP+Reality** — 新一代抗 DPI 传输层，免域名直连
-- ☁️ **VLESS - WS + TLS** — 支持 Cloudflare CDN 与优选 IP 中转
-- 📡 **VLESS - gRPC + TLS** — 多路复用抗干扰（支持 CF CDN）
-- 🔒 **Trojan - gRPC / TLS** — gRPC 支持 CF CDN，TCP 限灰云直连
+- ✅ **VLESS - XTLS-Reality** — 免域名首选，借壳大厂 TLS 证书防主动探测
+- ✅ **VLESS - XHTTP+Reality** — 新一代抗 DPI 传输层，免域名直连
+- ✅ **VLESS - WS + TLS** — 支持 Cloudflare CDN 与优选 IP 中转
+- ✅ **VLESS - gRPC + TLS** — 多路复用抗干扰（支持 CF CDN）
+- ✅ **Trojan - gRPC / TLS** — gRPC 支持 CF CDN，TCP 限灰云直连
 
 ### sing-box
-- 🛡️ **VLESS - XTLS-Reality** — sing-box 内核版 Reality 主力
-- 🚀 **Hysteria 2 (Hy2)** — 晚高峰 / 高丢包 QUIC 加速，自带 pinSHA256
-- ⚡ **TUIC v5** — 极致低延迟 QUIC 方案
-- 🎭 **AnyTLS** — 缓解传统 TLS-in-TLS 握手特征
-- 📦 **Shadowsocks-2022** — 低 CPU 开销，适合中转与落地
-- 🔌 **SOCKS5 / HTTP** — 单端口双协议账号代理
+- ✅ **VLESS - XTLS-Reality** — sing-box 内核版 Reality 主力
+- ✅ **Hysteria 2 (Hy2)** — 晚高峰 / 高丢包 QUIC 加速，自带 pinSHA256
+- ✅ **TUIC v5** — 极致低延迟 QUIC 方案
+- ✅ **AnyTLS** — 缓解传统 TLS-in-TLS 握手特征
+- ✅ **Shadowsocks-2022** — 低 CPU 开销，适合中转与落地
+- ✅ **SOCKS5 / HTTP** — 单端口双协议账号代理
 
 > [!NOTE]
 > **零域名推荐**：直接使用 Reality、XHTTP、Hy2、TUIC 或 AnyTLS。<br/>
