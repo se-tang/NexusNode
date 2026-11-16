@@ -31,7 +31,7 @@ check_dependencies() {
 
     echo -e "${YELLOW}[Info] 检测到缺少基础依赖: ${missing[*]}，尝试自动安装...${NC}"
     if command -v apt-get &>/dev/null; then
-        apt-get update -qq && apt-get install -y -qq curl openssl gawk coreutils iproute2 systemd >/dev/null
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq && DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y -qq curl openssl gawk coreutils iproute2 systemd >/dev/null
     elif command -v dnf &>/dev/null; then
         dnf install -y -q curl openssl gawk coreutils iproute systemd >/dev/null
     elif command -v yum &>/dev/null; then
@@ -225,19 +225,19 @@ issue_acme_cert() {
     if ! command -v socat &>/dev/null; then
         echo -e "${CYAN}[Info]${NC} 正在安装证书申请依赖 socat..."
         if command -v apt-get &>/dev/null; then
-            apt-get install -y -qq socat >/dev/null || true
+            DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y -qq socat cron >/dev/null 2>&1 || true
         elif command -v dnf &>/dev/null; then
-            dnf install -y -q socat >/dev/null || true
+            dnf install -y -q socat cronie >/dev/null 2>&1 || true
         elif command -v yum &>/dev/null; then
-            yum install -y -q socat >/dev/null || true
+            yum install -y -q socat cronie >/dev/null 2>&1 || true
         fi
     fi
 
     local acme_bin="/root/.acme.sh/acme.sh"
     if [[ ! -x "$acme_bin" ]]; then
         echo -e "${CYAN}[Info]${NC} 正在安装 acme.sh..."
-        curl -fsSL https://get.acme.sh | sh -s email="nexus@${domain}" >/dev/null || {
-            echo -e "${RED}[Error] acme.sh 安装失败。${NC}" >&2
+        curl -fsSL --connect-timeout 10 --max-time 45 https://get.acme.sh | sh -s email="nexus@${domain}" || {
+            echo -e "${RED}[Error] acme.sh 安装失败，请检查网络到 get.acme.sh 的连通性。${NC}" >&2
             return 1
         }
     fi
