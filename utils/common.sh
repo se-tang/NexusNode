@@ -247,6 +247,11 @@ issue_acme_cert() {
     local cert_dir="$1"
     local domain="$2"
 
+    if [[ -s "$cert_dir/cert.pem" && -s "$cert_dir/key.pem" ]]; then
+        echo -e "${GREEN}[OK]${NC} 检测到 ${domain} 已有正式证书，直接复用。"
+        return 0
+    fi
+
     if is_port_in_use 80; then
         echo -e "${RED}[Error] 80 端口已被占用，无法使用 acme.sh standalone 模式申请证书。${NC}" >&2
         return 1
@@ -277,7 +282,10 @@ issue_acme_cert() {
     open_firewall_port 80 "tcp"
     "$acme_bin" --set-default-ca --server letsencrypt &>/dev/null || true
     echo -e "${CYAN}[Info]${NC} 正在向 Let's Encrypt 申请 ${domain} 的正式证书..."
-    if ! "$acme_bin" --issue -d "$domain" --standalone --keylength ec-256; then
+    local acme_rc=0
+    "$acme_bin" --issue -d "$domain" --standalone --keylength ec-256 || acme_rc=$?
+    # acme.sh 返回 2 表示证书仍在有效期内无需重复签发
+    if [[ $acme_rc -ne 0 && $acme_rc -ne 2 ]]; then
         echo -e "${RED}[Error] 证书申请失败！请确认域名已解析到本机 IP 且未开启 CF 小黄云（申请时需灰云）。${NC}" >&2
         return 1
     fi
