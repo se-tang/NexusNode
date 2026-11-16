@@ -17,6 +17,36 @@ SAFE_SNI_POOL=(
     "visualstudio.microsoft.com"
 )
 
+run_with_spinner() {
+    local msg="$1"
+    shift
+    local log_file
+    log_file="$(mktemp /tmp/nexus-cmd.XXXXXX)"
+    "$@" >"$log_file" 2>&1 &
+    local pid=$!
+    local spin='|/-\'
+    local i=0
+    local secs=0
+
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r${CYAN}[Info]${NC} %s... %c (%ds)" "$msg" "${spin:i%4:1}" "$secs"
+        sleep 1
+        ((i++))
+        ((secs++))
+    done
+
+    wait "$pid"
+    local rc=$?
+    if [[ $rc -eq 0 ]]; then
+        printf "\r${GREEN}[OK]${NC}   %s 完成 (%ds)        \n" "$msg" "$secs"
+    else
+        printf "\r${RED}[Fail]${NC} %s 失败 (%ds)        \n" "$msg" "$secs"
+        tail -n 15 "$log_file" 2>/dev/null || true
+    fi
+    rm -f "$log_file"
+    return $rc
+}
+
 check_dependencies() {
     local missing=()
     for cmd in curl openssl awk shuf ss systemctl; do
@@ -223,13 +253,15 @@ issue_acme_cert() {
     fi
 
     if ! command -v socat &>/dev/null; then
-        echo -e "${CYAN}[Info]${NC} 正在安装证书申请依赖 socat..."
         if command -v apt-get &>/dev/null; then
-            DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y -qq socat cron >/dev/null 2>&1 || true
+            run_with_spinner "正在安装证书申请依赖 socat/cron (请勿中断)" \
+                env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y -qq socat cron || true
         elif command -v dnf &>/dev/null; then
-            dnf install -y -q socat cronie >/dev/null 2>&1 || true
+            run_with_spinner "正在安装证书申请依赖 socat/cronie" \
+                dnf install -y -q socat cronie || true
         elif command -v yum &>/dev/null; then
-            yum install -y -q socat cronie >/dev/null 2>&1 || true
+            run_with_spinner "正在安装证书申请依赖 socat/cronie" \
+                yum install -y -q socat cronie || true
         fi
     fi
 
