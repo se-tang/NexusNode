@@ -74,7 +74,7 @@ configure_singbox() {
     echo " 2. Hysteria 2 (Hy2)     (恶劣网络/晚高峰加速)"
     echo " 3. TUIC v5              (极致低时延)"
     echo " 4. AnyTLS               (新一代抗 TLS 指纹)"
-    echo " 5. Shadowsocks-2022     (低CPU开销转发)"
+    echo " 5. Shadowsocks-2022     (弱协议，低CPU开销转发)"
     echo " 6. SOCKS5 / HTTP        (纯净账号代理)"
     echo "------------------------------------------"
     read -p " 请选择协议 [1-6] (默认 1): " proto_choice
