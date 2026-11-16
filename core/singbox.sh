@@ -155,8 +155,18 @@ EOF
         2)
             echo -e "\n${CYAN}--- 配置 sing-box Hysteria 2 ---${NC}"
             prompt_tls_cert "/etc/sing-box/certs" "www.bing.com" || return 1
-            local password
+            read -p " └─ 开启 Salamander 混淆抗 UDP 阻断 [Y/n] (默认 Y): " use_obfs
+            use_obfs="${use_obfs:-Y}"
+
+            local password obfs_block="" obfs_query="" obfs_info="关闭"
             password="$(openssl rand -hex 12)"
+            if [[ "$use_obfs" =~ ^[Yy]$ ]]; then
+                local obfs_pass
+                obfs_pass="$(openssl rand -hex 8)"
+                obfs_block="      \"obfs\": { \"type\": \"salamander\", \"password\": \"${obfs_pass}\" },"
+                obfs_query="&obfs=salamander&obfs-password=${obfs_pass}"
+                obfs_info="salamander (${obfs_pass})"
+            fi
 
             cat <<EOF > /etc/sing-box/config.json
 {
@@ -170,6 +180,7 @@ EOF
       "users": [
         { "name": "nexus", "password": "$password" }
       ],
+${obfs_block}
       "tls": {
         "enabled": true,
         "alpn": [ "h3" ],
@@ -184,11 +195,12 @@ EOF
             deploy_singbox_config "$port" "udp" || return 1
             local host_addr="$url_ip"
             [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
-            local link="hysteria2://$password@$host_addr:$port?insecure=$TLS_INSECURE&sni=$TLS_DOMAIN#NexusNode-Singbox-Hy2"
+            local link="hysteria2://$password@$host_addr:$port/?sni=$TLS_DOMAIN&insecure=$TLS_INSECURE${obfs_query}#NexusNode-Singbox-Hy2"
             print_singbox_result "sing-box Hysteria 2" "$link" \
                 "地址 (Address): ${host_addr}" \
                 "端口 (Port):    ${port} (UDP)" \
                 "密码 (Password): ${password}" \
+                "混淆 (Obfs):    ${obfs_info}" \
                 "SNI:            ${TLS_DOMAIN}" \
                 "自签跳过验证:   ${TLS_INSECURE}"
             ;;
