@@ -215,15 +215,13 @@ generate_self_signed_cert() {
 
 prompt_tls_cert() {
     local cert_dir="$1"
-    local default_domain="${2:-www.bing.com}"
 
-    read -p " └─ 绑定域名 / SNI (留空使用 $default_domain 自签): " input_domain
+    read -p " └─ 绑定域名 / SNI (留空自动优选并自签): " input_domain
     input_domain="$(echo "${input_domain:-}" | tr -d '[:space:]')"
-    TLS_DOMAIN="${input_domain:-$default_domain}"
-
-    if [[ ! "$TLS_DOMAIN" =~ ^[a-zA-Z0-9.-]+$ ]]; then
-        echo -e "${RED}[Error] 非法域名格式: $TLS_DOMAIN${NC}" >&2
-        return 1
+    if [[ -z "$input_domain" ]]; then
+        TLS_DOMAIN="$(get_target_sni "")" || return 1
+    else
+        TLS_DOMAIN="$(get_target_sni "$input_domain")" || return 1
     fi
 
     read -p " └─ TLS 公钥证书路径 (留空自动生成自签证书): " input_cert
