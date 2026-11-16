@@ -213,6 +213,53 @@ generate_self_signed_cert() {
         -addext "subjectAltName=${san}" &>/dev/null
 }
 
+issue_acme_cert() {
+    local cert_dir="$1"
+    local domain="$2"
+
+    if is_port_in_use 80; then
+        echo -e "${RED}[Error] 80 端口已被占用，无法使用 acme.sh standalone 模式申请证书。${NC}" >&2
+        return 1
+    fi
+
+    if ! command -v socat &>/dev/null; then
+        echo -e "${CYAN}[Info]${NC} 正在安装证书申请依赖 socat..."
+        if command -v apt-get &>/dev/null; then
+            apt-get install -y -qq socat >/dev/null || true
+        elif command -v dnf &>/dev/null; then
+            dnf install -y -q socat >/dev/null || true
+        elif command -v yum &>/dev/null; then
+            yum install -y -q socat >/dev/null || true
+        fi
+    fi
+
+    local acme_bin="/root/.acme.sh/acme.sh"
+    if [[ ! -x "$acme_bin" ]]; then
+        echo -e "${CYAN}[Info]${NC} 正在安装 acme.sh..."
+        curl -fsSL https://get.acme.sh | sh -s email="nexus@${domain}" >/dev/null || {
+            echo -e "${RED}[Error] acme.sh 安装失败。${NC}" >&2
+            return 1
+        }
+    fi
+
+    open_firewall_port 80 "tcp"
+    "$acme_bin" --set-default-ca --server letsencrypt &>/dev/null || true
+    echo -e "${CYAN}[Info]${NC} 正在向 Let's Encrypt 申请 ${domain} 的正式证书..."
+    if ! "$acme_bin" --issue -d "$domain" --standalone --keylength ec-256; then
+        echo -e "${RED}[Error] 证书申请失败！请确认域名已解析到本机 IP 且未开启 CF 小黄云（申请时需灰云）。${NC}" >&2
+        return 1
+    fi
+
+    mkdir -p "$cert_dir"
+    if ! "$acme_bin" --install-cert -d "$domain" --ecc \
+        --fullchain-file "$cert_dir/cert.pem" \
+        --key-file "$cert_dir/key.pem" \
+        --reloadcmd "systemctl restart nexus-xray 2>/dev/null || true; systemctl restart nexus-singbox 2>/dev/null || true"; then
+        echo -e "${RED}[Error] 安装证书文件失败。${NC}" >&2
+        return 1
+    fi
+}
+
 prompt_tls_cert() {
     local cert_dir="$1"
 
@@ -220,24 +267,6 @@ prompt_tls_cert() {
     input_domain="$(echo "${input_domain:-}" | tr -d '[:space:]')"
     if [[ -z "$input_domain" ]]; then
         TLS_DOMAIN="$(get_target_sni "")" || return 1
-    else
-        TLS_DOMAIN="$(get_target_sni "$input_domain")" || return 1
-    fi
-
-    read -p " └─ TLS 公钥证书路径 (留空自动生成自签证书): " input_cert
-    input_cert="$(echo "${input_cert:-}" | tr -d '[:space:]')"
-
-    if [[ -n "$input_cert" ]]; then
-        read -p " └─ TLS 私钥路径: " input_key
-        input_key="$(echo "${input_key:-}" | tr -d '[:space:]')"
-        if [[ ! -f "$input_cert" || ! -f "$input_key" ]]; then
-            echo -e "${RED}[Error] 证书或私钥文件不存在。${NC}" >&2
-            return 1
-        fi
-        TLS_CERT_FILE="$input_cert"
-        TLS_KEY_FILE="$input_key"
-        TLS_INSECURE=0
-    else
         echo -e "${CYAN}[Info]${NC} 正在生成 ECC 自签证书 ($TLS_DOMAIN)..."
         local local_pub_ip
         local_pub_ip="$(get_public_ip)"
@@ -249,5 +278,56 @@ prompt_tls_cert() {
         TLS_KEY_FILE="$cert_dir/key.pem"
         TLS_INSECURE=1
         TLS_CERT_SHA256="$(openssl x509 -in "$TLS_CERT_FILE" -noout -fingerprint -sha256 2>/dev/null | awk -F= '{print $2}' | tr -d ':\r\n' | tr 'A-F' 'a-f')"
+        return 0
     fi
+
+    TLS_DOMAIN="$(get_target_sni "$input_domain")" || return 1
+    echo "    证书获取方式:"
+    echo "      1. 自动申请 Let's Encrypt 正式证书 (推荐，需已解析到本机且暂时灰云)"
+    echo "      2. 自动生成自签证书 (适合已开 CF 小黄云且 SSL 为 Full 模式)"
+    echo "      3. 手动输入已有证书路径"
+    read -p " └─ 请选择 [1-3] (默认 1): " cert_mode
+    cert_mode="${cert_mode:-1}"
+
+    case "$cert_mode" in
+        1)
+            local domain_cert_dir="${cert_dir}/${TLS_DOMAIN}"
+            issue_acme_cert "$domain_cert_dir" "$TLS_DOMAIN" || return 1
+            TLS_CERT_FILE="${domain_cert_dir}/cert.pem"
+            TLS_KEY_FILE="${domain_cert_dir}/key.pem"
+            TLS_INSECURE=0
+            TLS_CERT_SHA256=""
+            ;;
+        2)
+            echo -e "${CYAN}[Info]${NC} 正在生成 ECC 自签证书 ($TLS_DOMAIN)..."
+            local local_pub_ip
+            local_pub_ip="$(get_public_ip)"
+            if ! generate_self_signed_cert "$cert_dir" "$TLS_DOMAIN" "$local_pub_ip"; then
+                echo -e "${RED}[Error] 生成自签证书失败。${NC}" >&2
+                return 1
+            fi
+            TLS_CERT_FILE="$cert_dir/cert.pem"
+            TLS_KEY_FILE="$cert_dir/key.pem"
+            TLS_INSECURE=1
+            TLS_CERT_SHA256="$(openssl x509 -in "$TLS_CERT_FILE" -noout -fingerprint -sha256 2>/dev/null | awk -F= '{print $2}' | tr -d ':\r\n' | tr 'A-F' 'a-f')"
+            ;;
+        3)
+            read -p " └─ TLS 公钥证书路径: " input_cert
+            read -p " └─ TLS 私钥路径: " input_key
+            input_cert="$(echo "${input_cert:-}" | tr -d '[:space:]')"
+            input_key="$(echo "${input_key:-}" | tr -d '[:space:]')"
+            if [[ ! -f "$input_cert" || ! -f "$input_key" ]]; then
+                echo -e "${RED}[Error] 证书或私钥文件不存在。${NC}" >&2
+                return 1
+            fi
+            TLS_CERT_FILE="$input_cert"
+            TLS_KEY_FILE="$input_key"
+            TLS_INSECURE=0
+            TLS_CERT_SHA256=""
+            ;;
+        *)
+            echo -e "${RED}[Error] 无效选项。${NC}" >&2
+            return 1
+            ;;
+    esac
 }
