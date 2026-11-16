@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+
+[[ -n "${NEXUS_COMMON_LOADED:-}" ]] && return 0
+NEXUS_COMMON_LOADED=1
+
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+CYAN="\033[36m"
+NC="\033[0m"
+
+SAFE_SNI_POOL=(
+    "www.microsoft.com"
+    "www.bing.com"
+    "learn.microsoft.com"
+    "azure.microsoft.com"
+    "visualstudio.microsoft.com"
+)
+
+check_dependencies() {
+    local missing=()
+    for cmd in curl openssl awk shuf ss systemctl; do
+        if ! command -v "$cmd" &>/dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    echo -e "${YELLOW}[Info] 检测到缺少基础依赖: ${missing[*]}，尝试自动安装...${NC}"
+    if command -v apt-get &>/dev/null; then
+        apt-get update -qq && apt-get install -y -qq curl openssl gawk coreutils iproute2 systemd >/dev/null
+    elif command -v dnf &>/dev/null; then
+        dnf install -y -q curl openssl gawk coreutils iproute systemd >/dev/null
+    elif command -v yum &>/dev/null; then
+        yum install -y -q curl openssl gawk coreutils iproute systemd >/dev/null
+    else
+        echo -e "${RED}[Error] 无法自动安装依赖 (${missing[*]})，请手动安装后重试。${NC}"
+        return 1
+    fi
+
+    for cmd in curl openssl awk shuf ss systemctl; do
+        if ! command -v "$cmd" &>/dev/null; then
+            echo -e "${RED}[Error] 依赖 $cmd 仍不可用，请检查系统环境。${NC}"
+            return 1
+        fi
+    done
+}
+
+auto_select_best_sni() {
+    local best_sni=""
+    local min_time=9999.0
+
+    for sni in "${SAFE_SNI_POOL[@]}"; do
+        local result http_ver time_total
+        result=$(curl -so /dev/null -w "%{http_version} %{time_total}" --tlsv1.3 --http2 --connect-timeout 2 --max-time 3 "https://$sni" 2>/dev/null || true)
+        http_ver=$(echo "$result" | awk '{print $1}')
+        time_total=$(echo "$result" | awk '{print $2}')
+
+        # Reality 要求目标站点支持 TLS 1.3 + HTTP/2 (http_version == 2)
+        if [[ "$http_ver" == "2" ]] && [[ -n "$time_total" ]] && awk -v t="$time_total" 'BEGIN {exit !(t > 0)}'; then
+            local is_smaller
+            is_smaller=$(awk -v t="$time_total" -v m="$min_time" 'BEGIN {print (t < m) ? 1 : 0}')
+            if [[ "$is_smaller" -eq 1 ]]; then
+                min_time="$time_total"
+                best_sni="$sni"
+            fi
+        fi
+    done
+
+    if [[ -z "$best_sni" ]]; then
+        best_sni="${SAFE_SNI_POOL[0]}"
+    fi
+
+    echo "$best_sni"
+}
+
+get_target_sni() {
+    local input_sni="${1:-}"
+    input_sni="$(echo "$input_sni" | tr -d '[:space:]')"
+
+    if [[ -z "$input_sni" ]]; then
+        echo -e "${CYAN}[Info]${NC} 正在后台进行多节点 TLS 1.3 + H2 延迟优选..." >&2
+        auto_select_best_sni
+        return 0
+    fi
+
+    if [[ ! "$input_sni" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+        echo -e "${RED}[Error] 非法域名格式: $input_sni${NC}" >&2
+        return 1
+    fi
+
+    echo "$input_sni"
+}
+
+is_port_in_use() {
+    local port="$1"
+    ss -tuln 2>/dev/null | grep -qE "[:.]$port[[:space:]]"
+}
+
+get_random_port() {
+    local port
+    local attempts=0
+    while (( attempts < 50 )); do
+        port=$(shuf -i 10000-65535 -n 1)
+        if ! is_port_in_use "$port"; then
+            echo "$port"
+            return 0
+        fi
+        ((attempts++))
+    done
+    echo -e "${RED}[Error] 无法找到可用高位端口。${NC}" >&2
+    return 1
+}
+
+get_valid_port() {
+    local input_port="${1:-}"
+    input_port="$(echo "$input_port" | tr -d '[:space:]')"
+
+    if [[ -z "$input_port" ]]; then
+        get_random_port
+        return $?
+    fi
+
+    if [[ ! "$input_port" =~ ^[0-9]+$ ]] || (( input_port < 1 || input_port > 65535 )); then
+        echo -e "${RED}[Error] 端口必须是 1-65535 之间的整数。${NC}" >&2
+        return 1
+    fi
+
+    if is_port_in_use "$input_port"; then
+        echo -e "${YELLOW}[Warn] 端口 $input_port 当前已被占用，如果是覆盖重装则将继续。${NC}" >&2
+    fi
+
+    echo "$input_port"
+}
+
+get_public_ip() {
+    local ip=""
+    ip=$(curl -fsS -4 --max-time 3 ipv4.ip.sb 2>/dev/null \
+        || curl -fsS -4 --max-time 3 api.ipify.org 2>/dev/null \
+        || curl -fsS -4 --max-time 3 ifconfig.me 2>/dev/null \
+        || true)
+
+    if [[ -z "$ip" ]]; then
+        ip=$(curl -fsS -6 --max-time 3 ipv6.ip.sb 2>/dev/null \
+            || curl -fsS -6 --max-time 3 api64.ipify.org 2>/dev/null \
+            || true)
+    fi
+
+    if [[ -z "$ip" ]]; then
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    fi
+
+    echo "$ip"
+}
+
+format_ip_for_url() {
+    local ip="$1"
+    if [[ "$ip" == *:* ]]; then
+        echo "[$ip]"
+    else
+        echo "$ip"
+    fi
+}
+
+open_firewall_port() {
+    local port="$1"
+    local proto="${2:-tcp}"
+
+    if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+        ufw allow "$port/$proto" &>/dev/null || true
+    fi
+
+    if command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
+        firewall-cmd --permanent --add-port="$port/$proto" &>/dev/null || true
+        firewall-cmd --reload &>/dev/null || true
+    fi
+}
+
+restart_and_verify_service() {
+    local svc="$1"
+    systemctl daemon-reload
+    systemctl enable "$svc" &>/dev/null
+    systemctl restart "$svc"
+    sleep 1
+
+    if ! systemctl is-active --quiet "$svc"; then
+        echo -e "${RED}[Error] 服务 $svc 启动失败，最近日志如下:${NC}"
+        journalctl -u "$svc" -n 20 --no-pager 2>/dev/null || true
+        return 1
+    fi
+    return 0
+}
