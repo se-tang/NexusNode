@@ -206,7 +206,7 @@ generate_self_signed_cert() {
     [[ -n "$pub_ip" && "$pub_ip" != *:* ]] && san="${san},IP:${pub_ip}"
     mkdir -p "$cert_dir"
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-        -nodes -days 3650 \
+        -nodes -days 365 \
         -keyout "$cert_dir/key.pem" \
         -out "$cert_dir/cert.pem" \
         -subj "/CN=$domain" \
@@ -250,5 +250,6 @@ prompt_tls_cert() {
         TLS_CERT_FILE="$cert_dir/cert.pem"
         TLS_KEY_FILE="$cert_dir/key.pem"
         TLS_INSECURE=1
+        TLS_CERT_SHA256="$(openssl x509 -in "$TLS_CERT_FILE" -noout -fingerprint -sha256 2>/dev/null | awk -F= '{print $2}' | tr -d ':\r\n' | tr 'A-F' 'a-f')"
     fi
 }

@@ -195,7 +195,9 @@ EOF
             deploy_singbox_config "$port" "udp" || return 1
             local host_addr="$url_ip"
             [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
-            local link="hysteria2://$password@$host_addr:$port/?sni=$TLS_DOMAIN&insecure=$TLS_INSECURE${obfs_query}#NexusNode-Singbox-Hy2"
+            local pin_query=""
+            [[ "$TLS_INSECURE" -eq 1 && -n "${TLS_CERT_SHA256:-}" ]] && pin_query="&pinSHA256=${TLS_CERT_SHA256}"
+            local link="hysteria2://$password@$host_addr:$port/?sni=$TLS_DOMAIN&insecure=$TLS_INSECURE${pin_query}${obfs_query}#NexusNode-Singbox-Hy2"
             print_singbox_result "sing-box Hysteria 2" "$link" \
                 "地址 (Address): ${host_addr}" \
                 "端口 (Port):    ${port} (UDP)" \
