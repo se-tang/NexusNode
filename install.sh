@@ -3,12 +3,21 @@
 [[ $EUID -ne 0 ]] && echo -e "\033[31m[Error] 请以 Root 权限运行此脚本！\033[0m" && exit 1
 
 REPO_TAR_URL="https://github.com/se-tang/NexusNode/archive/refs/heads/main.tar.gz"
-REPO_SHA_URL="https://api.github.com/repos/se-tang/NexusNode/commits/main"
+REPO_ATOM_URL="https://github.com/se-tang/NexusNode/commits/main.atom"
 INSTALL_DIR="/opt/NexusNode"
 VERSION_FILE="${INSTALL_DIR}/.version"
 
 fetch_remote_sha() {
-    curl -fsSL --connect-timeout 3 --max-time 5 -H "Accept: application/vnd.github.sha" "$REPO_SHA_URL" 2>/dev/null | tr -d '[:space:]' || true
+    local sha=""
+    if command -v git &>/dev/null; then
+        sha="$(git ls-remote https://github.com/se-tang/NexusNode.git refs/heads/main 2>/dev/null | awk '{print $1}' | head -n 1 || true)"
+    fi
+    if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+        sha="$(curl -fsSL --connect-timeout 3 --max-time 5 "$REPO_ATOM_URL" 2>/dev/null | grep -m 1 -oE '[0-9a-f]{40}' || true)"
+    fi
+    if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "$sha"
+    fi
 }
 
 download_and_exec() {
@@ -35,7 +44,10 @@ if [[ -z "$DIR" || ! -f "$DIR/utils/common.sh" || ! -f "$DIR/core/xray.sh" || ! 
     remote_sha="$(fetch_remote_sha)"
 
     if [[ -f "$INSTALL_DIR/install.sh" && -f "$INSTALL_DIR/utils/common.sh" && -f "$INSTALL_DIR/core/xray.sh" && -f "$INSTALL_DIR/core/singbox.sh" ]]; then
-        if [[ -z "$remote_sha" || "$local_sha" == "$remote_sha" ]]; then
+        if [[ -z "$remote_sha" ]]; then
+            exec bash "$INSTALL_DIR/install.sh" "$@"
+        fi
+        if [[ "$local_sha" == "$remote_sha" ]]; then
             exec bash "$INSTALL_DIR/install.sh" "$@"
         fi
         echo -e "\033[36m[Info] 检测到新版本，正在同步更新 NexusNode...\033[0m"
