@@ -302,9 +302,20 @@ issue_acme_cert() {
 
 prompt_tls_cert() {
     local cert_dir="$1"
+    local mode="${2:-optional}"
 
-    read -p " └─ 绑定域名 / SNI (留空自动优选并自签): " input_domain
-    input_domain="$(echo "${input_domain:-}" | tr -d '[:space:]')"
+    if [[ "$mode" == "required" ]]; then
+        read -p " └─ 绑定自有域名 (例如 node.example.com): " input_domain
+        input_domain="$(echo "${input_domain:-}" | tr -d '[:space:]')"
+        if [[ -z "$input_domain" ]]; then
+            echo -e "${RED}[Error] 该协议必须绑定已解析到本机的自有域名。${NC}" >&2
+            return 1
+        fi
+    else
+        read -p " └─ 绑定域名 / SNI (留空自动优选并自签): " input_domain
+        input_domain="$(echo "${input_domain:-}" | tr -d '[:space:]')"
+    fi
+
     if [[ -z "$input_domain" ]]; then
         TLS_DOMAIN="$(get_target_sni "")" || return 1
         echo -e "${CYAN}[Info]${NC} 正在生成 ECC 自签证书 ($TLS_DOMAIN)..."

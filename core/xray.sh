@@ -85,13 +85,16 @@ configure_xray() {
     echo " 3. VLESS - WS + TLS      (需自有域名 / CDN)"
     echo " 4. VLESS - gRPC + TLS    (需自有域名 / CDN)"
     echo " 5. Trojan - gRPC / TLS   (需自有域名 / CDN)"
-    echo " 6. VMess - WS            (仅限内网/中转，勿直连)"
     echo "------------------------------------------"
-    read -p " 请选择协议 [1-6] (默认 1): " proto_choice
+    read -p " 请选择协议 [1-5] (默认 1): " proto_choice
     proto_choice=${proto_choice:-1}
 
     local input_port port pub_ip url_ip uuid
-    read -p " └─ 监听端口 [1-65535] (留空随机): " input_port
+    if [[ "$proto_choice" == "3" || "$proto_choice" == "4" || "$proto_choice" == "5" ]]; then
+        read -p " └─ 监听端口 (开 CF 小黄云请填 443/2053/2083/2087/2096/8443，留空随机): " input_port
+    else
+        read -p " └─ 监听端口 [1-65535] (留空随机): " input_port
+    fi
     port="$(get_valid_port "$input_port")" || return 1
 
     ensure_xray || return 1
@@ -207,7 +210,7 @@ EOF
             ;;
         3)
             echo -e "\n${CYAN}--- 配置 VLESS-WS+TLS ---${NC}"
-            prompt_tls_cert "/usr/local/etc/xray/certs" "www.bing.com" || return 1
+            prompt_tls_cert "/usr/local/etc/xray/certs" "required" || return 1
             read -p " └─ WebSocket 路径 (默认 /ws): " ws_path
             ws_path="${ws_path:-/ws}"
             [[ "$ws_path" != /* ]] && ws_path="/$ws_path"
@@ -255,7 +258,7 @@ EOF
             ;;
         4)
             echo -e "\n${CYAN}--- 配置 VLESS-gRPC+TLS ---${NC}"
-            prompt_tls_cert "/usr/local/etc/xray/certs" "www.bing.com" || return 1
+            prompt_tls_cert "/usr/local/etc/xray/certs" "required" || return 1
             read -p " └─ gRPC ServiceName (默认 grpc): " grpc_svc
             grpc_svc="${grpc_svc:-grpc}"
 
@@ -298,10 +301,11 @@ EOF
                 "UUID:           ${uuid}" \
                 "SNI:            ${TLS_DOMAIN}" \
                 "ServiceName:    ${grpc_svc}"
+            echo -e "${YELLOW}[提示] 若开启 Cloudflare 小黄云，请确保在 CF 后台「网络 (Network)」中开启 gRPC 开关。${NC}"
             ;;
         5)
             echo -e "\n${CYAN}--- 配置 Trojan-gRPC/TLS ---${NC}"
-            prompt_tls_cert "/usr/local/etc/xray/certs" "www.bing.com" || return 1
+            prompt_tls_cert "/usr/local/etc/xray/certs" "required" || return 1
             read -p " └─ 传输方式 [1. TLS(TCP)  2. gRPC+TLS] (默认 1): " t_mode
             t_mode="${t_mode:-1}"
             local password
@@ -353,44 +357,11 @@ EOF
                 "密码 (Password): ${password}" \
                 "SNI:            ${TLS_DOMAIN}" \
                 "传输 (Network): ${net_type}"
-            ;;
-        6)
-            echo -e "\n${CYAN}--- 配置 VMess-WS ---${NC}"
-            read -p " └─ WebSocket 路径 (默认 /vmess): " ws_path
-            ws_path="${ws_path:-/vmess}"
-            [[ "$ws_path" != /* ]] && ws_path="/$ws_path"
-
-            cat <<EOF > /usr/local/etc/xray/config.json
-{
-  "log": { "loglevel": "warning" },
-  "inbounds": [
-    {
-      "port": $port,
-      "protocol": "vmess",
-      "settings": {
-        "clients": [ { "id": "$uuid", "alterId": 0 } ]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "security": "none",
-        "wsSettings": {
-          "path": "$ws_path"
-        }
-      }
-    }
-  ],
-  "outbounds": [ { "protocol": "freedom" } ]
-}
-EOF
-            deploy_xray_config "$port" "tcp" || return 1
-            local vmess_json
-            vmess_json="{\"v\":\"2\",\"ps\":\"NexusNode-Xray-VMess-WS\",\"add\":\"$pub_ip\",\"port\":\"$port\",\"id\":\"$uuid\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"\",\"path\":\"$ws_path\",\"tls\":\"\"}"
-            local link="vmess://$(base64_encode_oneline "$vmess_json")"
-            print_xray_result "Xray-VMess-WS" "$link" \
-                "地址 (Address): ${pub_ip}" \
-                "端口 (Port):    ${port}" \
-                "UUID:           ${uuid}" \
-                "WS Path:        ${ws_path}"
+            if [[ "$net_type" == "grpc" ]]; then
+                echo -e "${YELLOW}[提示] 若开启 Cloudflare 小黄云，请确保在 CF 后台「网络 (Network)」中开启 gRPC 开关。${NC}"
+            else
+                echo -e "${YELLOW}[提示] 原生 Trojan (TCP) 不支持 Cloudflare 小黄云代理，请保持灰云直连。${NC}"
+            fi
             ;;
         *)
             echo -e "${RED}无效协议选项。${NC}"

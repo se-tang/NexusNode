@@ -28,7 +28,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 
 | 后端核心 | 已支持协议 | 适用场景 |
 | :--- | :--- | :--- |
-| **Xray-core** | `VLESS-XTLS-Reality` / `VLESS-XHTTP+Reality` / `VLESS-WS+TLS` / `VLESS-gRPC+TLS` / `Trojan` / `VMess-WS` | 免域名抗封锁、抗 DPI、CDN 中转 |
+| **Xray-core** | `VLESS-XTLS-Reality` / `VLESS-XHTTP+Reality` / `VLESS-WS+TLS` / `VLESS-gRPC+TLS` / `Trojan` | 免域名抗封锁、抗 DPI、CDN 中转 |
 | **sing-box** | `VLESS-XTLS-Reality` / `Hysteria 2` / `TUIC v5` / `AnyTLS` / `Shadowsocks-2022` / `SOCKS5 & HTTP` | 高丢包加速、低时延、抗 TLS 指纹 |
 
 ---
