@@ -29,15 +29,15 @@
 
 ## 快速开始
 
-以 `root` 身份在 Linux VPS 上执行：
+以 root 身份在 Linux VPS 上执行：
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/install.sh)
 ```
 
 > [!TIP]
-> 首次运行会自动安装到 `/opt/NexusNode` 并创建全局快捷指令 **`nx`**。<br/>
-> 后续在终端任意位置输入 **`nx`** 即可再次打开面板；再次执行上方一键命令时，仅在远端仓库有更新时才自动同步。
+> 首次运行会自动安装到 `/opt/NexusNode` 并注册全局快捷指令 **`nx`**。<br/>
+> 之后随时输入 **`nx`** 即可呼出面板；再次执行一键命令时，仅在远端仓库有更新时才自动同步。
 
 <details>
 <summary>预览交互界面</summary>
@@ -61,10 +61,24 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 
 ## 支持协议
 
-* **Xray-core**：`VLESS-Reality` · `VLESS-XHTTP+Reality` · `VLESS-WS+TLS` · `VLESS-gRPC+TLS` · `Trojan`
-* **sing-box**：`VLESS-Reality` · `Hysteria 2` · `TUIC v5` · `AnyTLS` · `Shadowsocks-2022` · `SOCKS5 / HTTP`
+### Xray-core
+- ✅ **VLESS - XTLS-Reality** — 免域名首选，借壳大厂 TLS 证书防主动探测
+- ✅ **VLESS - XHTTP+Reality** — 新一代抗 DPI 传输层，免域名直连
+- ✅ **VLESS - WS + TLS** — 支持 Cloudflare CDN 与优选 IP 中转
+- ✅ **VLESS - gRPC + TLS** — 多路复用抗干扰（支持 CF CDN）
+- ✅ **Trojan - gRPC / TLS** — gRPC 支持 CF CDN，TCP 限灰云直连
 
-> 免域名推荐直接使用 **Reality / XHTTP / Hy2 / TUIC / AnyTLS**；使用自有域名时会自动识别灰云（`acme.sh` 签发正式证书）或 CF 小黄云（自动匹配 `443` 等 CDN 端口）。
+### sing-box
+- ✅ **VLESS - XTLS-Reality** — sing-box 内核版 Reality 主力
+- ✅ **Hysteria 2 (Hy2)** — 晚高峰 / 高丢包 QUIC 加速，自带 pinSHA256
+- ✅ **TUIC v5** — 极致低延迟 QUIC 方案
+- ✅ **AnyTLS** — 缓解传统 TLS-in-TLS 握手特征
+- ✅ **Shadowsocks-2022** — 低 CPU 开销，适合中转与落地
+- ✅ **SOCKS5 / HTTP** — 单端口双协议账号代理
+
+> [!NOTE]
+> **零域名推荐**：直接使用 Reality、XHTTP、Hy2、TUIC 或 AnyTLS。<br/>
+> **自有域名**：自动探测灰云（acme.sh 签发正式证书）或 CF 小黄云（优先分配 443 端口）。
 
 ---
 
@@ -81,15 +95,19 @@ flowchart LR
     D & F & G --> H["校验配置 · 放行防火墙 · 输出分享链接"]
 ```
 
-* **Zero-Panel 轻量化**：纯 Bash + `systemd` 托管，零面板常驻内存开销。
-* **安全与环境兜底**：自动检查安装依赖、配置 pre-check 校验、自动放行 `ufw` / `firewalld` 端口，兼容 IPv4 与纯 IPv6 双栈。
+- ✅ **无面板零驻留**：纯 Bash + systemd 托管，零常驻内存占用
+- ✅ **自动环境兜底**：自动补齐缺失依赖、校验配置、放行 ufw / firewalld 端口
+- ✅ **双栈全兼容**：自动识别 IPv4 与纯 IPv6 环境，直接输出标准客户端链接
 
 ---
 
 ## Cloudflare CDN 指南
 
+> [!TIP]
+> 配合 CF 小黄云使用 **Xray WS+TLS / gRPC+TLS**，只需在 CF 添加一条灰云 A 记录，无需手动拷贝证书。
+
 <details>
-<summary>点击展开：配合 CF 小黄云与优选 IP 使用</summary>
+<summary>点击展开：4 步完成配置与优选 IP</summary>
 
 1. 在 Cloudflare 添加一条灰云 A 记录指向 VPS IP。
 2. 运行 nx 选择 Xray 的 WS+TLS 或 gRPC+TLS，输入域名后脚本会自动申请证书（建议选 443 端口）。
@@ -106,10 +124,10 @@ flowchart LR
 NexusNode/
 ├── install.sh        # 入口、版本比对更新、nx 快捷指令与服务管理
 ├── core/
-│   ├── xray.sh       # Xray-core 部署模块 (Reality / XHTTP / WS / gRPC / Trojan)
-│   └── singbox.sh    # sing-box 部署模块 (Reality / Hy2 / TUIC / AnyTLS / SS2022 / Mixed)
+│   ├── xray.sh       # Xray-core 部署模块
+│   └── singbox.sh    # sing-box 部署模块
 ├── utils/
-│   └── common.sh     # SNI 优选、域名 CDN 探测、acme.sh 自动签发、防火墙与 systemd 封装
+│   └── common.sh     # SNI 优选、域名探测、acme.sh 签发、防火墙与 systemd 封装
 └── assets/
     └── logo.svg
 ```
