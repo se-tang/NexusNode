@@ -30,7 +30,7 @@ configure_singbox() {
 
             if ! command -v sing-box &>/dev/null; then
                 echo -e "${CYAN}[Info]${NC} 正在安装 sing-box 内核..."
-                bash <(curl -fsSL https://sing-box.app/deb.sh) || true
+                curl -fsSL https://sing-box.app/install.sh | sh || true
                 if ! command -v sing-box &>/dev/null; then
                     echo -e "${RED}[Error] 未能自动安装 sing-box 内核，请检查网络或系统源。${NC}"
                     return 1

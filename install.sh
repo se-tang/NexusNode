@@ -28,6 +28,19 @@ source "$DIR/core/singbox.sh"
 
 check_dependencies || exit 1
 
+install_shortcut() {
+    local target="$DIR/install.sh"
+    if [[ -w /usr/local/bin ]] && [[ ! -f /usr/local/bin/nx || "$(cat /usr/local/bin/nx 2>/dev/null)" != *"$target"* ]]; then
+        cat <<EOF > /usr/local/bin/nx
+#!/usr/bin/env bash
+exec bash "$target" "\$@"
+EOF
+        chmod +x /usr/local/bin/nx
+    fi
+}
+
+install_shortcut
+
 manage_services() {
     echo -e "\n${CYAN}--- 服务状态与卸载管理 ---${NC}"
     echo -n " nexus-xray:    "
@@ -96,6 +109,7 @@ show_menu() {
         echo " 3. 服务管理  (查看状态 / 日志 / 卸载)"
         echo " 0. 退出脚本"
         echo "------------------------------------------"
+        echo -e " ${CYAN}提示:${NC} 随时在终端输入 ${GREEN}nx${NC} 可快速打开此面板"
         read -p " 请选择 [0-3]: " core_choice
 
         case "$core_choice" in
