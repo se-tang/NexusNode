@@ -147,13 +147,13 @@ get_random_port() {
 
 get_cf_https_port() {
     local p
-    for p in 8443 2053 2083 2087 2096 443; do
+    for p in 443 8443 2053 2083 2087 2096; do
         if ! is_port_in_use "$p"; then
             echo "$p"
             return 0
         fi
     done
-    echo "8443"
+    echo "443"
 }
 
 # 返回 0=直连本机(灰云), 1=疑似CDN代理(小黄云/其他IP), 2=未解析
