@@ -3,9 +3,9 @@
     <img src="./assets/logo.svg" alt="NexusNode" width="520" />
   </a>
 
-  <h3>Zero-Panel · 纯 Shell 双核代理部署引擎</h3>
+  <h2>NexusNode</h2>
   <p>
-    一条命令在 VPS 上部署 <strong>Xray-core</strong> 与 <strong>sing-box</strong> 主流抗封锁协议。<br/>
+    无面板 · 纯 Shell 双核代理部署引擎 — 一条命令在 VPS 上部署 <strong>Xray-core</strong> 与 <strong>sing-box</strong> 主流抗封锁协议。<br/>
     自动探测域名与 Cloudflare CDN 状态、全自动签发证书、即拷即连。
   </p>
 
