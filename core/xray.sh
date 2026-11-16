@@ -256,8 +256,7 @@ EOF
 }
 EOF
             deploy_xray_config "$port" "tcp" || return 1
-            local host_addr="$url_ip"
-            [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
+            local host_addr="$TLS_DOMAIN"
             local link="vless://$uuid@$host_addr:$port?encryption=none&security=tls&sni=$TLS_DOMAIN&alpn=http%2F1.1&allowInsecure=$TLS_INSECURE&type=ws&host=$TLS_DOMAIN&path=$ws_path#NexusNode-Xray-VLESS-WS"
             print_xray_result "Xray-VLESS-WS+TLS" "$link" \
                 "地址 (Address): ${host_addr}" \
@@ -302,8 +301,7 @@ EOF
 }
 EOF
             deploy_xray_config "$port" "tcp" || return 1
-            local host_addr="$url_ip"
-            [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
+            local host_addr="$TLS_DOMAIN"
             local link="vless://$uuid@$host_addr:$port?encryption=none&security=tls&sni=$TLS_DOMAIN&allowInsecure=$TLS_INSECURE&type=grpc&serviceName=$grpc_svc&mode=gun#NexusNode-Xray-VLESS-gRPC"
             print_xray_result "Xray-VLESS-gRPC+TLS" "$link" \
                 "地址 (Address): ${host_addr}" \
@@ -357,8 +355,7 @@ EOF
 }
 EOF
             deploy_xray_config "$port" "tcp" || return 1
-            local host_addr="$url_ip"
-            [[ "$TLS_INSECURE" -eq 0 ]] && host_addr="$TLS_DOMAIN"
+            local host_addr="$TLS_DOMAIN"
             local link="trojan://$password@$host_addr:$port?security=tls&sni=$TLS_DOMAIN&allowInsecure=$TLS_INSECURE&$extra_link#NexusNode-Xray-Trojan"
             print_xray_result "Xray-Trojan-${net_type^^}" "$link" \
                 "地址 (Address): ${host_addr}" \

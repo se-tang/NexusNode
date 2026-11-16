@@ -357,58 +357,35 @@ prompt_cert_for_domain() {
     local is_cf="${3:-0}"
     local domain_cert_dir="${cert_dir}/${domain}"
 
-    local default_choice=1
-    if [[ "$is_cf" -eq 1 ]] && [[ ! -s "${domain_cert_dir}/cert.pem" ]]; then
-        default_choice=2
+    if [[ -s "${domain_cert_dir}/cert.pem" && -s "${domain_cert_dir}/key.pem" ]]; then
+        echo -e "${GREEN}[OK]${NC} 检测到 ${domain} 已有 Let's Encrypt 正式证书，直接复用。"
+        TLS_CERT_FILE="${domain_cert_dir}/cert.pem"
+        TLS_KEY_FILE="${domain_cert_dir}/key.pem"
+        TLS_INSECURE=0
+        TLS_CERT_SHA256=""
+        return 0
     fi
 
-    echo "    证书获取方式:"
-    echo "      1. 自动申请/复用 Let's Encrypt 正式证书 (推荐，申请时需灰云直连)"
-    echo "      2. 自动生成自签证书 (适合已开 CF 小黄云且 SSL 为 Full 模式)"
-    echo "      3. 手动输入已有证书路径"
-    read -p " └─ 请选择 [1-3] (默认 ${default_choice}): " cert_mode
-    cert_mode="${cert_mode:-$default_choice}"
-
-    case "$cert_mode" in
-        1)
-            issue_acme_cert "$domain_cert_dir" "$domain" || return 1
-            TLS_CERT_FILE="${domain_cert_dir}/cert.pem"
-            TLS_KEY_FILE="${domain_cert_dir}/key.pem"
-            TLS_INSECURE=0
-            TLS_CERT_SHA256=""
-            ;;
-        2)
-            echo -e "${CYAN}[Info]${NC} 正在生成 ECC 自签证书 ($domain)..."
-            local local_pub_ip
-            local_pub_ip="$(get_public_ip)"
-            if ! generate_self_signed_cert "$cert_dir" "$domain" "$local_pub_ip"; then
-                echo -e "${RED}[Error] 生成自签证书失败。${NC}" >&2
-                return 1
-            fi
-            TLS_CERT_FILE="$cert_dir/cert.pem"
-            TLS_KEY_FILE="$cert_dir/key.pem"
-            TLS_INSECURE=1
-            TLS_CERT_SHA256="$(openssl x509 -in "$TLS_CERT_FILE" -noout -fingerprint -sha256 2>/dev/null | awk -F= '{print $2}' | tr -d ':\r\n' | tr 'A-F' 'a-f')"
-            ;;
-        3)
-            read -p " └─ TLS 公钥证书路径: " input_cert
-            read -p " └─ TLS 私钥路径: " input_key
-            input_cert="$(echo "${input_cert:-}" | tr -d '[:space:]')"
-            input_key="$(echo "${input_key:-}" | tr -d '[:space:]')"
-            if [[ ! -f "$input_cert" || ! -f "$input_key" ]]; then
-                echo -e "${RED}[Error] 证书或私钥文件不存在。${NC}" >&2
-                return 1
-            fi
-            TLS_CERT_FILE="$input_cert"
-            TLS_KEY_FILE="$input_key"
-            TLS_INSECURE=0
-            TLS_CERT_SHA256=""
-            ;;
-        *)
-            echo -e "${RED}[Error] 无效选项。${NC}" >&2
+    if [[ "$is_cf" -eq 1 ]]; then
+        echo -e "${CYAN}[Info]${NC} CDN 模式：正在自动生成回源 ECC 自签证书 (请确保 CF SSL/TLS 为 Full 模式)..."
+        local local_pub_ip
+        local_pub_ip="$(get_public_ip)"
+        if ! generate_self_signed_cert "$domain_cert_dir" "$domain" "$local_pub_ip"; then
+            echo -e "${RED}[Error] 生成自签证书失败。${NC}" >&2
             return 1
-            ;;
-    esac
+        fi
+        TLS_CERT_FILE="${domain_cert_dir}/cert.pem"
+        TLS_KEY_FILE="${domain_cert_dir}/key.pem"
+        # 客户端连接 CF 边缘节点使用 CF 公共证书，无需 allowInsecure
+        TLS_INSECURE=0
+        TLS_CERT_SHA256=""
+    else
+        issue_acme_cert "$domain_cert_dir" "$domain" || return 1
+        TLS_CERT_FILE="${domain_cert_dir}/cert.pem"
+        TLS_KEY_FILE="${domain_cert_dir}/key.pem"
+        TLS_INSECURE=0
+        TLS_CERT_SHA256=""
+    fi
 }
 
 prompt_tls_cert() {
