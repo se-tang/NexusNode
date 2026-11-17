@@ -340,6 +340,7 @@ EOF
             ;;
     esac
 
+    rm -f "${NEXUS_DIR}/links/singbox_"*.txt
     echo "$share_link" > "${NEXUS_DIR}/links/singbox_${mode}.txt"
     ui_node_card "$title" "$pub_ip" "$port" "$extra" "$share_link"
 }

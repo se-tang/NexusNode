@@ -410,6 +410,7 @@ EOF
             ;;
     esac
 
+    rm -f "${NEXUS_DIR}/links/xray_"*.txt
     echo "$share_link" > "${NEXUS_DIR}/links/xray_${mode}.txt"
     ui_node_card "$title" "${TLS_DOMAIN:-$pub_ip}" "$port" "$extra" "$share_link"
 }
