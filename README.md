@@ -64,6 +64,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 ### Xray-core
 - ✅ **VLESS - XTLS-Reality** — 免域名首选，借壳大厂 TLS 证书防主动探测
 - ✅ **VLESS - XHTTP+Reality** — 新一代抗 DPI 传输层，免域名直连
+- ✅ **VLESS - TCP+TLS+Vision** — 自有域名灰云直连最强，消除 TLS-in-TLS 指纹
 - ✅ **VLESS - WS + TLS** — 支持 Cloudflare CDN 与优选 IP 中转
 - ✅ **VLESS - gRPC + TLS** — 多路复用抗干扰（支持 CF CDN）
 - ✅ **Trojan - gRPC / TLS** — gRPC 支持 CF CDN，TCP 限灰云直连

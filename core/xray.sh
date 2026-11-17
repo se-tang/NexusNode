@@ -80,13 +80,14 @@ configure_xray() {
     echo -e "${CYAN}==========================================${NC}"
     echo -e "${CYAN}       NexusNode - Xray Protocol Menu     ${NC}"
     echo -e "${CYAN}==========================================${NC}"
-    echo " 1. VLESS - XTLS-Reality  (推荐，免域名/防封锁)"
-    echo " 2. VLESS - XHTTP+Reality (新一代抗 DPI，免域名)"
-    echo " 3. VLESS - WS + TLS      (需自有域名 / CDN)"
-    echo " 4. VLESS - gRPC + TLS    (需自有域名 / CDN)"
-    echo " 5. Trojan - gRPC / TLS   (需自有域名 / CDN)"
+    echo " 1. VLESS - XTLS-Reality   (免域名首选，防封锁)"
+    echo " 2. VLESS - XHTTP+Reality  (新一代抗 DPI，免域名)"
+    echo " 3. VLESS - TCP+TLS+Vision (需自有域名，灰云直连最强)"
+    echo " 4. VLESS - WS + TLS       (需自有域名 / 支持 CF CDN)"
+    echo " 5. VLESS - gRPC + TLS     (需自有域名 / 支持 CF CDN)"
+    echo " 6. Trojan - gRPC / TLS    (需自有域名 / gRPC 支持 CDN)"
     echo "------------------------------------------"
-    read -p " 请选择协议 [1-5] (默认 1): " proto_choice
+    read -p " 请选择协议 [1-6] (默认 1): " proto_choice
     proto_choice=${proto_choice:-1}
 
     ensure_xray || return 1
@@ -100,9 +101,9 @@ configure_xray() {
     mkdir -p /usr/local/etc/xray
 
     local input_port port
-    if [[ "$proto_choice" == "3" || "$proto_choice" == "4" || "$proto_choice" == "5" ]]; then
+    if [[ "$proto_choice" == "3" || "$proto_choice" == "4" || "$proto_choice" == "5" || "$proto_choice" == "6" ]]; then
         prompt_required_domain "$pub_ip" || return 1
-        if [[ "${DOMAIN_IS_CF:-0}" -eq 1 ]]; then
+        if [[ "$proto_choice" != "3" && "${DOMAIN_IS_CF:-0}" -eq 1 ]]; then
             read -p " └─ 监听端口 (CF CDN 仅支持 443/2053/2083/2087/2096/8443，留空自动选用): " input_port
             if [[ -z "$(echo "${input_port:-}" | tr -d '[:space:]')" ]]; then
                 port="$(get_cf_https_port)"
@@ -221,6 +222,44 @@ EOF
                 "ShortId:        ${short_id}"
             ;;
         3)
+            echo -e "\n${CYAN}--- 配置 VLESS-TCP+TLS+Vision ---${NC}"
+            cat <<EOF > /usr/local/etc/xray/config.json
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [
+    {
+      "port": $port,
+      "protocol": "vless",
+      "settings": {
+        "clients": [ { "id": "$uuid", "flow": "xtls-rprx-vision" } ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "certificates": [
+            { "certificateFile": "$TLS_CERT_FILE", "keyFile": "$TLS_KEY_FILE" }
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [ { "protocol": "freedom" } ]
+}
+EOF
+            deploy_xray_config "$port" "tcp" || return 1
+            local host_addr="$TLS_DOMAIN"
+            local link="vless://$uuid@$host_addr:$port?encryption=none&security=tls&sni=$TLS_DOMAIN&fp=chrome&allowInsecure=$TLS_INSECURE&type=tcp&flow=xtls-rprx-vision#NexusNode-Xray-Vision"
+            print_xray_result "Xray-TCP+TLS+Vision" "$link" \
+                "地址 (Address): ${host_addr}" \
+                "端口 (Port):    ${port}" \
+                "UUID:           ${uuid}" \
+                "SNI:            ${TLS_DOMAIN}" \
+                "流控 (Flow):    xtls-rprx-vision"
+            echo -e "${YELLOW}[提示] TCP+TLS+Vision 不支持 Cloudflare 小黄云代理，请保持域名灰云直连。${NC}"
+            ;;
+        4)
             echo -e "\n${CYAN}--- 配置 VLESS-WS+TLS ---${NC}"
             read -p " └─ WebSocket 路径 (默认 /ws): " ws_path
             ws_path="${ws_path:-/ws}"
@@ -265,8 +304,9 @@ EOF
                 "SNI:            ${TLS_DOMAIN}" \
                 "WS Path:        ${ws_path}" \
                 "自签证书跳过验证: ${TLS_INSECURE}"
+            echo -e "${YELLOW}[提示] 若使用 Cloudflare 小黄云，请确保后台 SSL 为 Full 且客户端替换地址为优选 IP 时端口用 443。${NC}"
             ;;
-        4)
+        5)
             echo -e "\n${CYAN}--- 配置 VLESS-gRPC+TLS ---${NC}"
             read -p " └─ gRPC ServiceName (默认 grpc): " grpc_svc
             grpc_svc="${grpc_svc:-grpc}"
@@ -311,7 +351,7 @@ EOF
                 "ServiceName:    ${grpc_svc}"
             echo -e "${YELLOW}[提示] 若开启 Cloudflare 小黄云，请确保在 CF 后台「网络 (Network)」中开启 gRPC 开关。${NC}"
             ;;
-        5)
+        6)
             echo -e "\n${CYAN}--- 配置 Trojan-gRPC/TLS ---${NC}"
             read -p " └─ 传输方式 [1. TLS(TCP)  2. gRPC+TLS] (默认 1): " t_mode
             t_mode="${t_mode:-1}"
