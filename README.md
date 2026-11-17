@@ -3,23 +3,23 @@
     <img src="./assets/logo.svg" alt="NexusNode" width="520" />
   </a>
 
-  <h2>NexusNode</h2>
+  <h2>NexusNode v2.0</h2>
   <p>
-    无面板 · 纯 Shell 双核代理部署引擎 — 一条命令在 VPS 上部署 <strong>Xray-core</strong> 与 <strong>sing-box</strong> 主流抗封锁协议。<br/>
-    自动探测域名与 Cloudflare CDN 状态、全自动签发证书、即拷即连。
+    无面板 · 纯 Shell 双核代理部署与运维引擎 — 支持 <strong>Xray-core</strong> 与 <strong>sing-box</strong> 主流抗封锁协议。<br/>
+    支持 TUI 交互与非交互式 CLI、WARP AI 分流、BBR 自愈诊断及跨机无缝迁移。
   </p>
 
   <p>
     <img src="https://img.shields.io/badge/Core-Xray%20%7C%20sing--box-5964C9?style=for-the-badge" alt="Cores" />
     <img src="https://img.shields.io/badge/Shell-Pure%20Bash-31C5D8?style=for-the-badge" alt="Pure Bash" />
-    <img src="https://img.shields.io/badge/Shortcut-nx-A78BFA?style=for-the-badge" alt="CLI nx" />
-    <img src="https://img.shields.io/badge/OS-Debian%20%7C%20Ubuntu%20%7C%20RHEL-1E293B?style=for-the-badge" alt="Linux" />
+    <img src="https://img.shields.io/badge/CLI-nexus%20%7C%20nx-A78BFA?style=for-the-badge" alt="CLI nexus" />
+    <img src="https://img.shields.io/badge/OS-Debian%20%7C%20Ubuntu%20%7C%20Alpine%20%7C%20RHEL-1E293B?style=for-the-badge" alt="Linux" />
   </p>
 
   <p>
     <a href="#-快速开始">快速开始</a> ·
     <a href="#-支持协议">支持协议</a> ·
-    <a href="#-智能部署流程">智能流程</a> ·
+    <a href="#-cli-与进阶运维">CLI 与进阶运维</a> ·
     <a href="#-cloudflare-cdn-指南">CF CDN 指南</a> ·
     <a href="#-项目结构">项目结构</a>
   </p>
@@ -36,26 +36,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 ```
 
 > [!TIP]
-> 首次运行会自动安装到 `/opt/NexusNode` 并注册全局快捷指令 **`nx`**。<br/>
-> 之后随时输入 **`nx`** 即可呼出面板；再次执行一键命令时，仅在远端仓库有更新时才自动同步。
-
-<details>
-<summary>预览交互界面</summary>
-
-```text
-==========================================
-          NexusNode 智能代理部署工具
-==========================================
- 1. Xray-core (稳定成熟，抗封锁首选)
- 2. sing-box  (新一代多协议，支持 Reality)
- 3. 服务管理  (查看状态 / 日志 / 卸载)
- 0. 退出脚本
-------------------------------------------
- 提示: 随时在终端输入 nx 可快速打开此面板
- 请选择 [0-3]:
-```
-
-</details>
+> 首次运行会自动安装到 `/opt/NexusNode` 并注册全局快捷指令 **`nexus`**（兼容 **`nx`**）。<br/>
+> 之后输入 `nexus` 或 `nx` 即可秒开双层 TUI 面板；重复执行一键命令时仅在远端有新提交时自动更新。
 
 ---
 
@@ -71,34 +53,35 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 
 ### sing-box
 - ✅ **VLESS - XTLS-Reality** — sing-box 内核版 Reality 主力
-- ✅ **Hysteria 2 (Hy2)** — 晚高峰 / 高丢包 QUIC 加速，自带 pinSHA256
+- ✅ **Hysteria 2 (Hy2)** — 晚高峰 QUIC 加速，支持 UDP 端口跳跃与 pinSHA256
 - ✅ **TUIC v5** — 极致低延迟 QUIC 方案
 - ✅ **AnyTLS** — 缓解传统 TLS-in-TLS 握手特征
-- ✅ **Shadowsocks-2022** — 低 CPU 开销，适合中转与落地
+- ✅ **Shadowsocks-2022** — 弱协议，低 CPU 开销转发
 - ✅ **SOCKS5 / HTTP** — 单端口双协议账号代理
 
 > [!NOTE]
-> **零域名推荐**：直接使用 Reality、XHTTP、Hy2、TUIC 或 AnyTLS。<br/>
+> **零域名推荐**：Reality、XHTTP、Hy2、TUIC 或 AnyTLS。<br/>
 > **自有域名**：自动探测灰云（acme.sh 签发正式证书）或 CF 小黄云（优先分配 443 端口）。
 
 ---
 
-## ⚡ 智能部署流程
+## ⚡ CLI 与进阶运维
 
-```mermaid
-flowchart LR
-    A["运行 nx / 一键脚本"] --> B{"选择协议类型"}
-    B -->|"免域名 Reality / QUIC"| C["TLS 1.3 + H2 优选大厂 SNI"]
-    C --> D["365天 ECC 证书 + pinSHA256"]
-    B -->|"自有域名 WS / gRPC / Trojan"| E["探测域名 DNS 解析"]
-    E -->|"灰云直连本机"| F["acme.sh 自动签发 Let's Encrypt"]
-    E -->|"小黄云 CDN"| G["优先分配 443 端口 + 回源证书"]
-    D & F & G --> H["校验配置 · 放行防火墙 · 输出分享链接"]
+除交互面板外，支持全非交互式命令行（`nexus --help` 查看完整参数）：
+
+```bash
+nexus add xray vision              # 一键静默部署 Xray Reality Vision
+nexus add xray xhttp               # 一键静默部署 Xray XHTTP Reality
+nexus add hy2 --hop 30000:40000    # 一键部署 Hysteria 2 并开启 UDP 端口跳跃
+nexus warp enable                  # 开启 WARP (127.0.0.1:40000) 解锁 ChatGPT / Netflix
+nexus doctor                       # 校准 NTP 时间、开启 BBR、调优 UDP 缓冲并自愈服务
+nexus migrate push root@1.2.3.4    # 通过 SSH 一键将密钥/UUID/端口无缝迁移到新机
+nexus links                        # 汇总打印当前所有已部署节点链接
 ```
 
-- 🪶 **无面板零驻留**：纯 Bash + systemd 托管，零常驻内存占用
-- 🧰 **自动环境兜底**：自动补齐缺失依赖、校验配置、放行 ufw / firewalld 端口
-- 🌐 **双栈全兼容**：自动识别 IPv4 与纯 IPv6 环境，直接输出标准客户端链接
+- 🪶 **沙盒与双 init 兼容**：低权限 `nexus` 用户沙盒运行，同时适配 systemd 与 Alpine OpenRC
+- 🧰 **零噪静默执行**：异常时自动输出 `/var/log/nexusnode/install.log` 关键日志摘要
+- 🌐 **全自动环境兜底**：自动放行 ufw / firewalld、365 天合规证书、兼容 IPv4 与纯 IPv6
 
 ---
 
@@ -123,12 +106,19 @@ flowchart LR
 
 ```text
 NexusNode/
-├── install.sh        # 入口、版本比对更新、nx 快捷指令与服务管理
+├── install.sh        # 入口引导、版本比对更新、注册 nexus / nx 命令
+├── nexus.sh          # CLI 解析与双层 TUI 交互主控
 ├── core/
-│   ├── xray.sh       # Xray-core 部署模块
-│   └── singbox.sh    # sing-box 部署模块
-├── utils/
-│   └── common.sh     # SNI 优选、域名探测、acme.sh 签发、防火墙与 systemd 封装
+│   ├── xray.sh       # Xray-core 6 协议部署与 WARP 路由注入
+│   └── singbox.sh    # sing-box 6 协议部署、端口跳跃与 WARP 路由注入
+├── lib/
+│   ├── ui.sh         # 零噪旋转任务引擎与卡片 UI
+│   ├── env.sh        # systemd / OpenRC 沙盒、防火墙与双栈 IP
+│   └── net.sh        # TLS 1.3+H2 SNI 测速、域名探测、acme.sh 与 port hopping
+├── modules/
+│   ├── warp.sh       # wgcf + wireproxy AI/流媒体分流
+│   ├── doctor.sh     # BBR、UDP 缓冲、NTP 校准与服务自愈
+│   └── migrate.sh    # 一键导出备份与 SSH 跨机迁移
 └── assets/
     └── logo.svg
 ```
