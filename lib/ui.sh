@@ -75,22 +75,44 @@ ui_ask() {
     eval "$__resultvar=\"\$input_val\""
 }
 
+# Compute terminal display width (strips ANSI escapes, counts CJK as 2 cols)
+display_width() {
+    local plain
+    plain=$(printf '%b' "$1" | sed -E $'s/\x1b\\[[0-9;]*m//g')
+    if command -v wc >/dev/null 2>&1 && wc -L </dev/null >/dev/null 2>&1; then
+        printf '%s' "$plain" | wc -L
+    else
+        printf '%s' "${#plain}"
+    fi
+}
+
+ui_box_line() {
+    local content="$1"
+    local inner_width=58
+    local w pad
+    w=$(display_width "$content")
+    pad=$(( inner_width - w ))
+    (( pad < 0 )) && pad=0
+    printf "${C_CYAN}│${C_RESET}%b%*s${C_CYAN}│${C_RESET}\n" "$content" "$pad" ""
+}
+
 # Header Banner
 ui_header() {
     clear
     local os_info kernel_ver warp_status="未启用"
     os_info=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2 || uname -s)
+    os_info="${os_info:0:44}"
     kernel_ver=$(uname -r | cut -d'-' -f1)
     if ss -tlpn 2>/dev/null | grep -q '127.0.0.1:40000'; then
         warp_status="${C_GREEN}已分流 (127.0.0.1:40000)${C_RESET}"
     fi
 
     printf "${C_CYAN}╭──────────────────────────────────────────────────────────╮${C_RESET}\n"
-    printf "${C_CYAN}│${C_RESET}  ${C_BOLD}NexusNode v2.0${C_RESET}  · 极简零噪多内核代理部署与运维引擎      ${C_CYAN}│${C_RESET}\n"
+    ui_box_line "  ${C_BOLD}NexusNode v2.0${C_RESET}  · 极简零噪多内核代理部署与运维引擎"
     printf "${C_CYAN}├──────────────────────────────────────────────────────────┤${C_RESET}\n"
-    printf "${C_CYAN}│${C_RESET}  系统环境 : %-43s ${C_CYAN}│${C_RESET}\n" "${os_info:0:42}"
-    printf "${C_CYAN}│${C_RESET}  内核版本 : %-18s 服务管理 : %-14s ${C_CYAN}│${C_RESET}\n" "$kernel_ver" "${INIT_SYSTEM:-systemd}"
-    printf "${C_CYAN}│${C_RESET}  WARP状态 : %-53b ${C_CYAN}│${C_RESET}\n" "$warp_status"
+    ui_box_line "  系统环境 : ${os_info}"
+    ui_box_line "  内核版本 : $(printf '%-18s' "$kernel_ver") 服务管理 : ${INIT_SYSTEM:-systemd}"
+    ui_box_line "  WARP状态 : ${warp_status}"
     printf "${C_CYAN}╰──────────────────────────────────────────────────────────╯${C_RESET}\n"
 }
 

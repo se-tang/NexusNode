@@ -127,7 +127,7 @@ deploy_xray_node() {
                 if [[ "$NON_INTERACTIVE" == "true" ]]; then
                     port="$def_port"
                 else
-                    ui_ask "请输入监听端口" "$def_port" port
+                    ui_ask "监听端口 (已随机生成，回车直接使用)" "$def_port" port
                     port="$(get_valid_port "$port")" || return 1
                 fi
             fi
@@ -144,7 +144,7 @@ deploy_xray_node() {
             if [[ "$NON_INTERACTIVE" == "true" ]]; then
                 port="$def_port"
             else
-                ui_ask "请输入监听端口" "$def_port" port
+                ui_ask "监听端口 (已随机生成，回车直接使用)" "$def_port" port
                 port="$(get_valid_port "$port")" || return 1
             fi
         else

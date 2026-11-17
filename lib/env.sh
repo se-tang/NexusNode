@@ -32,6 +32,7 @@ detect_environment() {
     fi
 
     mkdir -p "$NEXUS_DIR"/{xray/certs,sing-box/certs,warp,backup,links}
+    ensure_nexus_user
 }
 
 install_base_deps() {

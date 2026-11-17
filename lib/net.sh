@@ -179,6 +179,7 @@ issue_acme_cert() {
         return 1
     }
 
+    ensure_nexus_user
     mkdir -p "$cert_dir"
     run_step "安装证书并配置自动续期重载" "
         ${acme_bin} --install-cert -d ${domain} --ecc \
