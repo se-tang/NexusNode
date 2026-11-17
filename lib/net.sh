@@ -123,7 +123,7 @@ scan_neighbor_sni() {
         (
             local ip="${prefix}.${last}"
             local tls_out
-            tls_out=$(timeout 1.5 openssl s_client -connect "${ip}:443" -tls1_3 -alpn h2 </dev/null 2>/dev/null || true)
+            tls_out=$(timeout 1.5 openssl s_client -connect "${ip}:443" -tls1_3 -alpn h2 </dev/null 2>/dev/null | tr -d '\0' || true)
             if echo "$tls_out" | grep -q "TLSv1.3" && echo "$tls_out" | grep -q "ALPN protocol: h2" && echo "$tls_out" | grep -qi "X25519"; then
                 local dom
                 dom=$(echo "$tls_out" | openssl x509 -noout -ext subjectAltName 2>/dev/null \
@@ -162,16 +162,16 @@ benchmark_sni() {
     pub_ip=$(get_public_ip 2>/dev/null || true)
 
     tput civis 2>/dev/null || true
-    printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 正在扫描同网段邻近 IP 的小众 TLS 1.3 + H2 域名..."
+    printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 正在扫描同网段邻近可用域名..."
 
     local nb_winner=""
     nb_winner=$(scan_neighbor_sni "$pub_ip" || true)
     if [[ -n "$nb_winner" ]]; then
         best_time=$(echo "$nb_winner" | awk '{print $1}')
         best_domain=$(echo "$nb_winner" | awk '{print $2}')
-        source_tag="同网段邻近"
+        source_tag="同网段"
     else
-        printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 同网段无可用站点，正在从多元化域名池并发测速..."
+        printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 同网段无可用域名，正在从域名池并发测速..."
         local tmp_dir="/tmp/nexus_sni_$$"
         mkdir -p "$tmp_dir"
         local sampled
@@ -200,7 +200,7 @@ benchmark_sni() {
     fi
     tput cnorm 2>/dev/null || true
 
-    printf "${C_CLEAR_LINE}${C_GREEN}✔${C_RESET} 最优 SNI 伪装域名: ${C_BOLD}%s${C_RESET} ${C_GRAY}(%s · TLS1.3+H2: %sms)${C_RESET}\n" "$best_domain" "$source_tag" "$best_time"
+    printf "${C_CLEAR_LINE}${C_GREEN}✔${C_RESET} 最优 SNI 伪装域名: ${C_BOLD}%s${C_RESET} ${C_GRAY}(%s · %sms)${C_RESET}\n" "$best_domain" "$source_tag" "$best_time"
     eval "$__out_var=\"\$best_domain\""
 }
 
