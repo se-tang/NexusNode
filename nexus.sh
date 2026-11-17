@@ -62,22 +62,28 @@ uninstall_core() {
     case "$target" in
         xray)
             run_step "卸载 Xray-core 服务、配置与节点链接" "
+                systemctl disable --now nexus-xray xray 2>/dev/null || true;
                 service_ctl stop nexus-xray;
                 service_ctl disable nexus-xray;
+                pkill -x xray 2>/dev/null || true;
                 rm -f /etc/systemd/system/nexus-xray.service /etc/init.d/nexus-xray;
                 systemctl daemon-reload 2>/dev/null || true;
-                rm -rf ${NEXUS_DIR}/xray ${NEXUS_DIR}/links/xray_*.txt
+                systemctl reset-failed 2>/dev/null || true;
+                rm -rf ${NEXUS_DIR}/xray ${NEXUS_DIR}/links/xray_*.txt /usr/local/etc/xray
             "
             ui_ok "Xray-core 已单独卸载清理。"
             ;;
         singbox)
             run_step "卸载 sing-box 服务、配置与端口跳跃规则" "
+                systemctl disable --now nexus-singbox sing-box 2>/dev/null || true;
                 service_ctl stop nexus-singbox;
                 service_ctl disable nexus-singbox;
+                pkill -x sing-box 2>/dev/null || true;
                 rm -f /etc/systemd/system/nexus-singbox.service /etc/init.d/nexus-singbox;
                 systemctl daemon-reload 2>/dev/null || true;
+                systemctl reset-failed 2>/dev/null || true;
                 nft delete table inet nexus_hop 2>/dev/null || true;
-                rm -rf ${NEXUS_DIR}/sing-box ${NEXUS_DIR}/links/singbox_*.txt
+                rm -rf ${NEXUS_DIR}/sing-box ${NEXUS_DIR}/links/singbox_*.txt /etc/sing-box
             "
             ui_ok "sing-box 已单独卸载清理。"
             ;;
@@ -158,13 +164,18 @@ manage_nodes_menu() {
 
 uninstall_all() {
     run_step "停止并清理所有 NexusNode 守护服务与配置" "
+        systemctl disable --now nexus-xray nexus-singbox nexus-warp xray sing-box 2>/dev/null || true;
         service_ctl stop nexus-xray;
         service_ctl stop nexus-singbox;
         service_ctl stop nexus-warp;
+        pkill -x xray 2>/dev/null || true;
+        pkill -x sing-box 2>/dev/null || true;
+        pkill -x wireproxy 2>/dev/null || true;
         rm -f /etc/systemd/system/nexus-*.service /etc/init.d/nexus-*;
         systemctl daemon-reload 2>/dev/null || true;
+        systemctl reset-failed 2>/dev/null || true;
         nft delete table inet nexus_hop 2>/dev/null || true;
-        rm -rf ${NEXUS_DIR} ${NEXUS_BIN}/xray ${NEXUS_BIN}/sing-box ${NEXUS_BIN}/wgcf ${NEXUS_BIN}/wireproxy /usr/local/bin/nexus /usr/local/bin/nx
+        rm -rf ${NEXUS_DIR} /opt/NexusNode /usr/local/etc/xray /etc/sing-box ${NEXUS_BIN}/xray ${NEXUS_BIN}/sing-box ${NEXUS_BIN}/wgcf ${NEXUS_BIN}/wireproxy /usr/local/bin/nexus /usr/local/bin/nx
     "
     ui_ok "NexusNode 已彻底卸载干净。"
 }
@@ -364,7 +375,7 @@ main_tui() {
         printf "  ${C_CYAN}2.${C_RESET} 部署 ${C_BOLD}sing-box${C_RESET} 节点        ${C_GRAY}(Reality / Hy2+跳跃 / TUIC / AnyTLS / SS2022 / Mixed)${C_RESET}\n"
         printf "  ${C_CYAN}3.${C_RESET} 进阶工具箱                ${C_GRAY}(WARP 分流 / Doctor 自愈 / 日志 / 无缝迁移)${C_RESET}\n"
         printf "  ${C_CYAN}4.${C_RESET} 查看与删除节点 / 单内核卸载\n"
-        printf "  ${C_CYAN}9.${C_RESET} 彻底卸载 NexusNode\n"
+        printf "  ${C_CYAN}5.${C_RESET} 彻底卸载 NexusNode\n"
         printf "  ${C_CYAN}0.${C_RESET} 退出脚本\n\n"
 
         local choice
@@ -374,7 +385,7 @@ main_tui() {
             2) tui_singbox_menu ;;
             3) tui_ops_menu ;;
             4) manage_nodes_menu ;;
-            9) uninstall_all; exit 0 ;;
+            5) uninstall_all; exit 0 ;;
             0) exit 0 ;;
             *) ui_warn "无效选项" ; sleep 1 ;;
         esac
