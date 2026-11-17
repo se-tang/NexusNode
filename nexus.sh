@@ -6,7 +6,9 @@
 
 set -o pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SOURCE_PATH")" && pwd)"
+[[ ! -d "${SCRIPT_DIR}/lib" && -d "/opt/NexusNode/lib" ]] && SCRIPT_DIR="/opt/NexusNode"
 source "${SCRIPT_DIR}/lib/ui.sh"
 source "${SCRIPT_DIR}/lib/env.sh"
 source "${SCRIPT_DIR}/lib/net.sh"
