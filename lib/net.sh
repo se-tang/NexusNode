@@ -4,14 +4,32 @@
 # ==============================================================================
 
 SAFE_SNI_POOL=(
-    "www.microsoft.com"
-    "www.bing.com"
-    "learn.microsoft.com"
-    "azure.microsoft.com"
+    "www.samsung.com"
+    "www.sony.com"
+    "www.lenovo.com"
+    "www.asus.com"
+    "www.dell.com"
+    "www.hp.com"
+    "www.ikea.com"
+    "www.nike.com"
+    "www.adidas.com"
+    "www.walmart.com"
+    "www.shopify.com"
+    "www.jetbrains.com"
+    "www.docker.com"
+    "www.mozilla.org"
+    "www.debian.org"
+    "www.kernel.org"
+    "www.udemy.com"
+    "www.coursera.org"
+    "www.mit.edu"
+    "www.stanford.edu"
     "www.oracle.com"
     "www.amd.com"
     "www.nvidia.com"
     "www.intel.com"
+    "www.microsoft.com"
+    "www.bing.com"
 )
 
 is_port_in_use() {
@@ -86,40 +104,103 @@ validate_sni() {
     echo "$sni"
 }
 
-# Benchmark direct-connect enterprise SNI domains requiring TLS 1.3 + HTTP/2
-benchmark_sni() {
-    local __out_var="$1"
-    local best_domain="www.microsoft.com"
-    local best_time="9999"
-    local tmp_dir="/tmp/nexus_sni_$$"
+# Scan nearby /24 neighbor IPs for real TLS 1.3 + X25519 + H2 domains (same ASN/subnet)
+scan_neighbor_sni() {
+    local pub_ip="$1"
+    [[ ! "$pub_ip" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)$ ]] && return 1
+    local prefix="${BASH_REMATCH[1]}"
+    local self_last="${BASH_REMATCH[2]}"
+    local tmp_dir="/tmp/nexus_nb_$$"
     mkdir -p "$tmp_dir"
 
-    tput civis 2>/dev/null || true
-    printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 正在并发测速筛选本机最优 TLS 1.3 + H2 伪装域名..."
+    local start=$(( self_last - 32 ))
+    local end=$(( self_last + 32 ))
+    (( start < 1 )) && start=1
+    (( end > 254 )) && end=254
 
-    for d in "${SAFE_SNI_POOL[@]}"; do
+    for last in $(seq "$start" "$end"); do
+        [[ "$last" -eq "$self_last" ]] && continue
         (
-            local res http_ver ms
-            res=$(curl -o /dev/null -s -w '%{http_version} %{time_connect}' --tlsv1.3 --http2 --connect-timeout 2 --max-time 3 "https://${d}" 2>/dev/null || true)
-            http_ver=$(echo "$res" | awk '{print $1}')
-            ms=$(echo "$res" | awk '{printf "%d", $2*1000}')
-            if [[ "$http_ver" == "2" && -n "$ms" && "$ms" -gt 0 ]]; then
-                echo "$ms $d" > "${tmp_dir}/${d}"
+            local ip="${prefix}.${last}"
+            local tls_out
+            tls_out=$(timeout 1.5 openssl s_client -connect "${ip}:443" -tls1_3 -alpn h2 </dev/null 2>/dev/null || true)
+            if echo "$tls_out" | grep -q "TLSv1.3" && echo "$tls_out" | grep -q "ALPN protocol: h2" && echo "$tls_out" | grep -qi "X25519"; then
+                local dom
+                dom=$(echo "$tls_out" | openssl x509 -noout -ext subjectAltName 2>/dev/null \
+                    | tr ',' '\n' | sed -n 's/.*DNS:\([^ *][^ ]*\).*/\1/p' \
+                    | grep -Ev '(cloudflare|amazonaws|cloudfront|fastly|akamai|localhost|invalid|local)' \
+                    | grep -E '^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' | head -n 1 || true)
+                if [[ -n "$dom" ]]; then
+                    local res http_ver ms
+                    res=$(curl -o /dev/null -s -w '%{http_version} %{time_connect}' --tlsv1.3 --http2 --connect-timeout 1.5 --max-time 2 "https://${dom}" 2>/dev/null || true)
+                    http_ver=$(echo "$res" | awk '{print $1}')
+                    ms=$(echo "$res" | awk '{printf "%d", $2*1000}')
+                    if [[ "$http_ver" == "2" && -n "$ms" && "$ms" -gt 0 ]]; then
+                        echo "$ms $dom" > "${tmp_dir}/${last}"
+                    fi
+                fi
             fi
         ) &
     done
     wait
 
+    local winner=""
     if ls "${tmp_dir}"/* >/dev/null 2>&1; then
-        local winner
-        winner=$(cat "${tmp_dir}"/* | sort -n | head -n1)
-        best_time=$(echo "$winner" | awk '{print $1}')
-        best_domain=$(echo "$winner" | awk '{print $2}')
+        winner=$(cat "${tmp_dir}"/* | sort -n | head -n 1)
     fi
     rm -rf "$tmp_dir"
+    [[ -n "$winner" ]] && echo "$winner"
+}
+
+# Benchmark SNI: prefer same-subnet neighbor domains, fallback to diversified pool
+benchmark_sni() {
+    local __out_var="$1"
+    local best_domain="www.samsung.com"
+    local best_time="9999"
+    local source_tag="优选域名"
+    local pub_ip=""
+    pub_ip=$(get_public_ip 2>/dev/null || true)
+
+    tput civis 2>/dev/null || true
+    printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 正在扫描同网段邻近 IP 的小众 TLS 1.3 + H2 域名..."
+
+    local nb_winner=""
+    nb_winner=$(scan_neighbor_sni "$pub_ip" || true)
+    if [[ -n "$nb_winner" ]]; then
+        best_time=$(echo "$nb_winner" | awk '{print $1}')
+        best_domain=$(echo "$nb_winner" | awk '{print $2}')
+        source_tag="同网段邻近"
+    else
+        printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 同网段无可用站点，正在从多元化域名池并发测速..."
+        local tmp_dir="/tmp/nexus_sni_$$"
+        mkdir -p "$tmp_dir"
+        local sampled
+        sampled=$(printf '%s\n' "${SAFE_SNI_POOL[@]}" | awk 'BEGIN{srand()} {print rand() "\t" $0}' | sort -n | head -n 10 | cut -f2-)
+        while IFS= read -r d; do
+            [[ -z "$d" ]] && continue
+            (
+                local res http_ver ms
+                res=$(curl -o /dev/null -s -w '%{http_version} %{time_connect}' --tlsv1.3 --http2 --connect-timeout 2 --max-time 3 "https://${d}" 2>/dev/null || true)
+                http_ver=$(echo "$res" | awk '{print $1}')
+                ms=$(echo "$res" | awk '{printf "%d", $2*1000}')
+                if [[ "$http_ver" == "2" && -n "$ms" && "$ms" -gt 0 ]]; then
+                    echo "$ms $d" > "${tmp_dir}/${d}"
+                fi
+            ) &
+        done <<< "$sampled"
+        wait
+
+        if ls "${tmp_dir}"/* >/dev/null 2>&1; then
+            local winner
+            winner=$(cat "${tmp_dir}"/* | sort -n | head -n1)
+            best_time=$(echo "$winner" | awk '{print $1}')
+            best_domain=$(echo "$winner" | awk '{print $2}')
+        fi
+        rm -rf "$tmp_dir"
+    fi
     tput cnorm 2>/dev/null || true
 
-    printf "${C_CLEAR_LINE}${C_GREEN}✔${C_RESET} 最优 SNI 伪装域名: ${C_BOLD}%s${C_RESET} ${C_GRAY}(TLS1.3+H2 握手: %sms)${C_RESET}\n" "$best_domain" "$best_time"
+    printf "${C_CLEAR_LINE}${C_GREEN}✔${C_RESET} 最优 SNI 伪装域名: ${C_BOLD}%s${C_RESET} ${C_GRAY}(%s · TLS1.3+H2: %sms)${C_RESET}\n" "$best_domain" "$source_tag" "$best_time"
     eval "$__out_var=\"\$best_domain\""
 }
 
