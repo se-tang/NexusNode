@@ -119,7 +119,7 @@ deploy_xray_node() {
                 if [[ "$NON_INTERACTIVE" == "true" ]]; then
                     port="$def_port"
                 else
-                    ui_ask "监听端口 (CF CDN 仅支持 443/8443/2053/2083/2087/2096)" "$def_port" port
+                    ui_ask "监听端口 (CF 端口)" "$def_port" port
                     port="$(get_valid_port "$port")" || return 1
                 fi
             else
@@ -127,7 +127,7 @@ deploy_xray_node() {
                 if [[ "$NON_INTERACTIVE" == "true" ]]; then
                     port="$def_port"
                 else
-                    ui_ask "监听端口 (已随机生成，回车直接使用)" "$def_port" port
+                    ui_ask "监听端口" "$def_port" port "随机"
                     port="$(get_valid_port "$port")" || return 1
                 fi
             fi
@@ -144,7 +144,7 @@ deploy_xray_node() {
             if [[ "$NON_INTERACTIVE" == "true" ]]; then
                 port="$def_port"
             else
-                ui_ask "监听端口 (已随机生成，回车直接使用)" "$def_port" port
+                ui_ask "监听端口" "$def_port" port "随机"
                 port="$(get_valid_port "$port")" || return 1
             fi
         else
@@ -207,7 +207,7 @@ EOF
             short_id=$(openssl rand -hex 4)
             xhttp_path="/$(openssl rand -hex 4)"
             if [[ "$NON_INTERACTIVE" != "true" ]]; then
-                ui_ask "请输入 XHTTP 路径" "$xhttp_path" xhttp_path
+                ui_ask "XHTTP 路径" "$xhttp_path" xhttp_path "随机"
                 [[ "$xhttp_path" != /* ]] && xhttp_path="/${xhttp_path}"
             fi
             cat > "${NEXUS_DIR}/xray/config.json" <<EOF

@@ -97,7 +97,7 @@ deploy_singbox_node() {
         if [[ "$NON_INTERACTIVE" == "true" ]]; then
             port="$def_port"
         else
-            ui_ask "监听端口 (已随机生成，回车直接使用)" "$def_port" port
+            ui_ask "监听端口" "$def_port" port "随机"
             port="$(get_valid_port "$port")" || return 1
         fi
     else
@@ -310,8 +310,8 @@ EOF
             username="nexus_$(openssl rand -hex 3)"
             password=$(openssl rand -hex 8)
             if [[ "$NON_INTERACTIVE" != "true" ]]; then
-                ui_ask "请输入 SOCKS5/HTTP 用户名" "$username" username
-                ui_ask "请输入 SOCKS5/HTTP 密码" "$password" password
+                ui_ask "SOCKS5/HTTP 用户名" "$username" username "随机"
+                ui_ask "SOCKS5/HTTP 密码" "$password" password "随机"
             fi
 
             cat > "${NEXUS_DIR}/sing-box/config.json" <<EOF

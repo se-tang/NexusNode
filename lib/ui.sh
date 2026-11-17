@@ -57,15 +57,20 @@ run_step() {
     fi
 }
 
-# Clean Prompt Input with Default Value
-# Usage: ui_ask "监听端口" "443" PORT_VAR
+# Clean Prompt Input with Default/Random Label
+# Usage: ui_ask "监听端口" "443" PORT_VAR [默认|随机]
 ui_ask() {
     local prompt_text="$1"
     local default_val="$2"
     local __resultvar="$3"
+    local tag="${4:-默认}"
     local input_val=""
 
-    printf "${C_PURPLE}❯${C_RESET} %s ${C_GRAY}[默认: %s]${C_RESET}: " "$prompt_text" "$default_val"
+    if [[ -n "$default_val" ]]; then
+        printf "${C_PURPLE}❯${C_RESET} %s ${C_GRAY}[%s: %s]${C_RESET}: " "$prompt_text" "$tag" "$default_val"
+    else
+        printf "${C_PURPLE}❯${C_RESET} %s: " "$prompt_text"
+    fi
     read -r input_val
     if [[ -z "$input_val" ]]; then
         input_val="$default_val"
@@ -96,22 +101,35 @@ ui_box_line() {
     printf "${C_CYAN}│${C_RESET}%b%*s${C_CYAN}│${C_RESET}\n" "$content" "$pad" ""
 }
 
+svc_status_badge() {
+    local svc="$1"
+    if (command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet "${svc}.service" 2>/dev/null) || \
+       (command -v rc-service >/dev/null 2>&1 && rc-service "$svc" status >/dev/null 2>&1); then
+        printf "${C_GREEN}运行中${C_RESET}"
+    else
+        printf "${C_GRAY}未启用${C_RESET}"
+    fi
+}
+
 # Header Banner
 ui_header() {
     clear
-    local os_info kernel_ver warp_status="未启用"
+    local os_info kernel_ver warp_status="未启用" xray_status sb_status
     os_info=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2 || uname -s)
     os_info="${os_info:0:44}"
     kernel_ver=$(uname -r | cut -d'-' -f1)
     if ss -tlpn 2>/dev/null | grep -q '127.0.0.1:40000'; then
         warp_status="${C_GREEN}已分流 (127.0.0.1:40000)${C_RESET}"
     fi
+    xray_status=$(svc_status_badge "nexus-xray")
+    sb_status=$(svc_status_badge "nexus-singbox")
 
     printf "${C_CYAN}╭──────────────────────────────────────────────────────────╮${C_RESET}\n"
     ui_box_line "  ${C_BOLD}NexusNode v2.0${C_RESET}  · 极简零噪多内核代理部署与运维引擎"
     printf "${C_CYAN}├──────────────────────────────────────────────────────────┤${C_RESET}\n"
     ui_box_line "  系统环境 : ${os_info}"
     ui_box_line "  内核版本 : $(printf '%-18s' "$kernel_ver") 服务管理 : ${INIT_SYSTEM:-systemd}"
+    ui_box_line "  Xray状态 : ${xray_status}             sing-box : ${sb_status}"
     ui_box_line "  WARP状态 : ${warp_status}"
     printf "${C_CYAN}╰──────────────────────────────────────────────────────────╯${C_RESET}\n"
 }
