@@ -299,8 +299,8 @@ tui_xray_menu() {
     printf "  ${C_CYAN}1.${C_RESET} VLESS - XTLS-Reality   ${C_GRAY}(免域名首选，借壳大厂防探测)${C_RESET}\n"
     printf "  ${C_CYAN}2.${C_RESET} VLESS - XHTTP+Reality  ${C_GRAY}(新一代抗 DPI，免域名直连)${C_RESET}\n"
     printf "  ${C_CYAN}3.${C_RESET} VLESS - TCP+TLS+Vision ${C_GRAY}(需自有域名，灰云直连最强)${C_RESET}\n"
-    printf "  ${C_CYAN}4.${C_RESET} VLESS - WS + TLS       ${C_GRAY}(需自有域名，小黄云先灰云申请证书或 SSL 设为 Full)${C_RESET}\n"
-    printf "  ${C_CYAN}5.${C_RESET} VLESS - gRPC + TLS     ${C_GRAY}(需自有域名，小黄云需开启 gRPC 且 SSL 设为 Full)${C_RESET}\n"
+    printf "  ${C_CYAN}4.${C_RESET} VLESS - WS + TLS       ${C_GRAY}(需自有域名，小黄云 SSL 需设为 Full)${C_RESET}\n"
+    printf "  ${C_CYAN}5.${C_RESET} VLESS - gRPC + TLS     ${C_GRAY}(需自有域名，小黄云需开 gRPC 且 SSL 设为 Full)${C_RESET}\n"
     printf "  ${C_CYAN}6.${C_RESET} Trojan - gRPC / TLS    ${C_GRAY}(需自有域名，gRPC 支持 CDN)${C_RESET}\n"
     printf "  ${C_CYAN}0.${C_RESET} 返回主菜单\n\n"
     local choice
