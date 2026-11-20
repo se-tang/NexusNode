@@ -315,7 +315,7 @@ prompt_cert_for_domain() {
             ui_err "生成自签证书失败。"
             return 1
         }
-        ui_ok "CDN 模式：已自动生成回源 365 天 ECC 自签证书 (请确保 CF SSL/TLS 为 Full 模式)。"
+        ui_warn "CDN 模式：已生成回源 365 天自签证书，请将 CF SSL/TLS 设为「Full」(勿选 Strict，否则报 526)。"
         TLS_CERT_FILE="${domain_cert_dir}/cert.pem"
         TLS_KEY_FILE="${domain_cert_dir}/key.pem"
         TLS_INSECURE=0
