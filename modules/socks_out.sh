@@ -21,7 +21,13 @@ is_socks_out_enabled_for() {
     [[ "$SOCKS_OUT_SCOPE" == "all" || "$SOCKS_OUT_SCOPE" == "$core" ]]
 }
 
-# Parse: socks5://user:pass@ip:port, socks://ip:port, ip:port:user:pass, ip:port
+url_decode() {
+    local s="${1//\\/\\\\}"
+    s="${s//%/\\x}"
+    printf '%b' "$s"
+}
+
+# Parse: socks5://, socks5h://, socks://, ip:port:user:pass, ip:port
 parse_socks5_input() {
     local raw="$1"
     raw="$(echo "$raw" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -29,18 +35,17 @@ parse_socks5_input() {
     raw="${raw%%\?*}"
 
     local host="" port="" user="" pass=""
-    if [[ "$raw" =~ ^socks5?:// ]]; then
-        local body="${raw#socks5://}"
-        body="${body#socks://}"
+    if [[ "$raw" =~ ^socks(5h?|4a?)?:// ]]; then
+        local body="${raw#*://}"
         body="${body%%/*}"
         if [[ "$body" == *@* ]]; then
             local auth="${body%@*}"
             local addr="${body##*@}"
             if [[ "$auth" == *:* ]]; then
-                user="${auth%%:*}"
-                pass="${auth#*:}"
+                user="$(url_decode "${auth%%:*}")"
+                pass="$(url_decode "${auth#*:}")"
             else
-                user="$auth"
+                user="$(url_decode "$auth")"
             fi
             body="$addr"
         fi
