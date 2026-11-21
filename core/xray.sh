@@ -23,36 +23,11 @@ ensure_xray_binary() {
 }
 
 build_xray_outbounds() {
-    if is_warp_active; then
-        cat <<'EOF'
-  "outbounds": [
-    { "tag": "direct", "protocol": "freedom" },
-    {
-      "tag": "warp-out",
-      "protocol": "socks",
-      "settings": { "servers": [{ "address": "127.0.0.1", "port": 40000 }] }
-    },
-    { "tag": "block", "protocol": "blackhole" }
-  ],
-  "routing": {
-    "domainStrategy": "IPIfNonMatch",
-    "rules": [
-      {
-        "type": "field",
-        "domain": ["geosite:openai", "geosite:anthropic", "geosite:netflix", "geosite:disney", "geosite:google"],
-        "outboundTag": "warp-out"
-      }
-    ]
-  }
-EOF
-    else
-        cat <<'EOF'
-  "outbounds": [
-    { "tag": "direct", "protocol": "freedom" },
-    { "tag": "block", "protocol": "blackhole" }
-  ]
-EOF
-    fi
+    local j
+    j=$(build_xray_routing_json)
+    j="${j#\{}"
+    j="${j%\}}"
+    printf '  %s\n' "$j"
 }
 
 generate_xray_reality_keys() {

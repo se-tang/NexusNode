@@ -123,6 +123,12 @@ ui_header() {
     fi
     xray_status=$(svc_status_badge "nexus-xray")
     sb_status=$(svc_status_badge "nexus-singbox")
+    local socks_status="${C_GRAY}未启用${C_RESET}"
+    if [[ -f "${NEXUS_DIR:-/etc/nexusnode}/socks_outbound.conf" ]]; then
+        local SOCKS_OUT_HOST="" SOCKS_OUT_PORT="" SOCKS_OUT_SCOPE=""
+        source "${NEXUS_DIR:-/etc/nexusnode}/socks_outbound.conf" 2>/dev/null || true
+        [[ -n "$SOCKS_OUT_HOST" ]] && socks_status="${C_GREEN}${SOCKS_OUT_HOST}:${SOCKS_OUT_PORT} (${SOCKS_OUT_SCOPE:-all})${C_RESET}"
+    fi
 
     printf "${C_CYAN}╭──────────────────────────────────────────────────────────╮${C_RESET}\n"
     ui_box_line "  ${C_BOLD}NexusNode v2.0${C_RESET}  · 极简零噪多内核代理部署与运维引擎"
@@ -131,6 +137,7 @@ ui_header() {
     ui_box_line "  内核版本 : $(printf '%-18s' "$kernel_ver") 服务管理 : ${INIT_SYSTEM:-systemd}"
     ui_box_line "  Xray状态 : ${xray_status}             sing-box : ${sb_status}"
     ui_box_line "  WARP状态 : ${warp_status}"
+    ui_box_line "  SOCKS出口: ${socks_status}"
     printf "${C_CYAN}╰──────────────────────────────────────────────────────────╯${C_RESET}\n"
 }
 

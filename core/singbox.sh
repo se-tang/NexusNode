@@ -28,28 +28,11 @@ ensure_singbox_binary() {
 }
 
 build_singbox_routing() {
-    if is_warp_active; then
-        cat <<'EOF'
-  "outbounds": [
-    { "type": "direct", "tag": "direct" },
-    { "type": "socks", "tag": "warp-out", "server": "127.0.0.1", "server_port": 40000 }
-  ],
-  "route": {
-    "rules": [
-      {
-        "domain_suffix": ["openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "anthropic.com", "claude.ai", "netflix.com", "google.com"],
-        "outbound": "warp-out"
-      }
-    ],
-    "final": "direct"
-  }
-EOF
-    else
-        cat <<'EOF'
-  "outbounds": [ { "type": "direct", "tag": "direct" } ],
-  "route": { "final": "direct" }
-EOF
-    fi
+    local j
+    j=$(build_singbox_routing_json)
+    j="${j#\{}"
+    j="${j%\}}"
+    printf '  %s\n' "$j"
 }
 
 deploy_singbox_service() {

@@ -13,6 +13,7 @@ source "${SCRIPT_DIR}/lib/ui.sh"
 source "${SCRIPT_DIR}/lib/env.sh"
 source "${SCRIPT_DIR}/lib/net.sh"
 source "${SCRIPT_DIR}/modules/warp.sh"
+source "${SCRIPT_DIR}/modules/socks_out.sh"
 source "${SCRIPT_DIR}/modules/doctor.sh"
 source "${SCRIPT_DIR}/modules/migrate.sh"
 source "${SCRIPT_DIR}/core/xray.sh"
@@ -190,6 +191,7 @@ NexusNode v2.0 - 极简零噪多内核代理部署与运维工具
   nexus add singbox [模式]           部署 sing-box (reality | hy2 | tuic | anytls | ss2022 | mixed)
   nexus add hy2                      快捷部署 sing-box Hysteria 2 (支持端口跳跃)
   nexus warp [enable|disable]        一键开启或关闭 Cloudflare WARP AI/流媒体自动分流
+  nexus socks [set <链接>|off]       设置或清除自定义 SOCKS5 落地出口 (默认全部节点)
   nexus doctor [--fix]               一键诊断时间同步、BBR、UDP缓冲区与服务自愈
   nexus migrate [export|import|push] 节点配置与私钥无缝备份/恢复/SSH跨机推送
   nexus links                        输出当前所有节点分享链接
@@ -258,6 +260,17 @@ handle_cli_args() {
                 disable_warp_outbound
             else
                 install_warp_outbound
+            fi
+            ;;
+        socks)
+            install_base_deps
+            if [[ "${1:-}" == "off" || "${1:-}" == "disable" ]]; then
+                disable_socks_outbound
+            elif [[ "${1:-}" == "set" ]]; then
+                shift || true
+                configure_socks_outbound "${1:-}" "${2:-all}"
+            else
+                configure_socks_outbound "${1:-}" "${2:-}"
             fi
             ;;
         doctor)
@@ -352,6 +365,8 @@ tui_ops_menu() {
     printf "  ${C_CYAN}4.${C_RESET} 查看服务状态与运行日志\n"
     printf "  ${C_CYAN}5.${C_RESET} 导出节点备份包 (Migrate Export)\n"
     printf "  ${C_CYAN}6.${C_RESET} 通过 SSH 一键推送节点至新机 (Migrate Push)\n"
+    printf "  ${C_CYAN}7.${C_RESET} 设置自定义 SOCKS5 出口  ${C_GRAY}(直接粘贴落地 SOCKS5，默认全节点通用)${C_RESET}\n"
+    printf "  ${C_CYAN}8.${C_RESET} 关闭并清除 SOCKS5 出口\n"
     printf "  ${C_CYAN}0.${C_RESET} 返回主菜单\n\n"
     local choice
     ui_ask "请选择操作" "3" choice
@@ -362,6 +377,8 @@ tui_ops_menu() {
         4) show_service_logs ;;
         5) migrate_export ;;
         6) migrate_push ;;
+        7) install_base_deps && configure_socks_outbound ;;
+        8) disable_socks_outbound ;;
         0) return ;;
         *) ui_warn "无效选项" ;;
     esac
