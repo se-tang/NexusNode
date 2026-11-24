@@ -201,6 +201,8 @@ NexusNode v2.0 - 极简零噪多内核代理部署与运维工具
 可选参数 (配合 nexus add 使用):
   --port <端口>                      指定监听端口 (默认自动生成或匹配 CF HTTPS 端口)
   --sni <域名>                       指定伪装 SNI 或自有域名
+  --sni-mode <auto|edu|neighbor>     SNI 优选策略: auto(同段+机构) | edu(仅扫高校/科研/公共机构)
+  --sni-region <地区>                机构优选地区: auto|hk|jp|sg|tw|kr|us|eu|au|global|all
   --hop <起始:结束>                  指定 Hysteria 2 UDP 端口跳跃范围 (如 30000:40000)
 EOF
 }
@@ -215,7 +217,7 @@ handle_cli_args() {
             export NON_INTERACTIVE="true"
             local core="${1:-}"
             shift || true
-            local mode="" port="" sni="" hop=""
+            local mode="" port="" sni="" hop="" sni_mode="" sni_region=""
 
             if [[ "$core" == "xray" ]]; then
                 mode="vision"
@@ -240,12 +242,29 @@ handle_cli_args() {
 
             while [[ $# -gt 0 ]]; do
                 case "$1" in
-                    --port) port="${2:-}"; shift 2 ;;
-                    --sni)  sni="${2:-}"; shift 2 ;;
-                    --hop)  hop="${2:-}"; shift 2 ;;
+                    --port)       port="${2:-}"; shift 2 ;;
+                    --sni)        sni="${2:-}"; shift 2 ;;
+                    --sni-mode)   sni_mode="${2:-}"; shift 2 ;;
+                    --sni-region) sni_region="${2:-}"; shift 2 ;;
+                    --hop)        hop="${2:-}"; shift 2 ;;
                     *) shift ;;
                 esac
             done
+
+            if [[ -n "$sni_mode" ]]; then
+                if ! valid_sni_mode "$sni_mode"; then
+                    ui_err "无效 --sni-mode: ${sni_mode} (可选: auto | edu | neighbor)"
+                    exit 1
+                fi
+                export NEXUS_SNI_MODE="$sni_mode"
+            fi
+            if [[ -n "$sni_region" ]]; then
+                if ! valid_sni_region "$sni_region"; then
+                    ui_err "无效 --sni-region: ${sni_region} (可选: auto | hk | jp | sg | tw | kr | us | eu | au | global | all)"
+                    exit 1
+                fi
+                export NEXUS_SNI_REGION="$sni_region"
+            fi
 
             install_base_deps
             if [[ "$core" == "xray" ]]; then
@@ -309,7 +328,7 @@ handle_cli_args() {
 tui_xray_menu() {
     ui_header
     printf "  ${C_BOLD}[Xray-core 协议部署]${C_RESET}\n\n"
-    printf "  ${C_CYAN}1.${C_RESET} VLESS - XTLS-Reality   ${C_GRAY}(免域名首选，借壳大厂防探测)${C_RESET}\n"
+    printf "  ${C_CYAN}1.${C_RESET} VLESS - XTLS-Reality   ${C_GRAY}(免域名首选，同段/高校科研智能伪装)${C_RESET}\n"
     printf "  ${C_CYAN}2.${C_RESET} VLESS - XHTTP+Reality  ${C_GRAY}(新一代抗 DPI，免域名直连)${C_RESET}\n"
     printf "  ${C_CYAN}3.${C_RESET} VLESS - TCP+TLS+Vision ${C_GRAY}(需自有域名，灰云直连最强)${C_RESET}\n"
     printf "  ${C_CYAN}4.${C_RESET} VLESS - WS + TLS       ${C_GRAY}(需自有域名，小黄云 SSL 需设为 Full)${C_RESET}\n"
@@ -408,6 +427,11 @@ main_tui() {
         esac
     done
 }
+
+if [[ "${1:-}" =~ ^(help|--help|-h)$ ]]; then
+    print_cli_help
+    exit 0
+fi
 
 # Bootstrap shortcut commands `nexus` & `nx`
 ln -sf "${SCRIPT_DIR}/nexus.sh" /usr/local/bin/nexus 2>/dev/null || true

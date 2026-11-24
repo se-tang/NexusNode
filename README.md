@@ -44,7 +44,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 ## 🧩 支持协议
 
 ### Xray-core
-- ✅ **VLESS - XTLS-Reality** — 免域名首选，借壳大厂 TLS 证书防主动探测
+- ✅ **VLESS - XTLS-Reality** — 免域名首选，支持 `/24` 同段净网扫描与同区高校/科研基地伪装优选
 - ✅ **VLESS - XHTTP+Reality** — 新一代抗 DPI 传输层，免域名直连
 - ✅ **VLESS - TCP+TLS+Vision** — 自有域名灰云直连最强，消除 TLS-in-TLS 指纹
 - ✅ **VLESS - WS + TLS** — 支持 Cloudflare CDN 与优选 IP 中转
@@ -70,14 +70,18 @@ bash <(curl -fsSL https://raw.githubusercontent.com/se-tang/NexusNode/main/insta
 除交互面板外，支持全非交互式命令行（`nexus --help` 查看完整参数）：
 
 ```bash
-nexus add xray vision              # 一键静默部署 Xray Reality Vision
-nexus add xray xhttp               # 一键静默部署 Xray XHTTP Reality
-nexus add hy2 --hop 30000:40000    # 一键部署 Hysteria 2 并开启 UDP 端口跳跃
-nexus warp enable                  # 开启 WARP (127.0.0.1:40000) 解锁 ChatGPT / Netflix
-nexus doctor                       # 校准 NTP 时间、开启 BBR、调优 UDP 缓冲并自愈服务
-nexus migrate push root@1.2.3.4    # 通过 SSH 一键将密钥/UUID/端口无缝迁移到新机
-nexus links                        # 汇总打印当前所有已部署节点链接
+nexus add xray vision                       # 一键静默部署 Xray Reality (默认同段+同区高校科研优选)
+nexus add xray vision --sni-mode edu        # 跳过同段邻居，仅优选同地区高校/科研基地伪装域名
+nexus add singbox reality --sni-region jp   # 指定日本地区高校/科研网优选部署 sing-box Reality
+nexus add xray xhttp                        # 一键静默部署 Xray XHTTP Reality
+nexus add hy2 --hop 30000:40000             # 一键部署 Hysteria 2 并开启 UDP 端口跳跃
+nexus warp enable                           # 开启 WARP (127.0.0.1:40000) 解锁 ChatGPT / Netflix
+nexus doctor                                # 校准 NTP 时间、开启 BBR、调优 UDP 缓冲并自愈服务
+nexus migrate push root@1.2.3.4             # 通过 SSH 一键将密钥/UUID/端口无缝迁移到新机
+nexus links                                 # 汇总打印当前所有已部署节点链接
 ```
+
+- 🧭 **三级 Reality SNI 智能优选**：`/24` 同网段净网扫描（DNS 回指校验 + 机构后缀加权）→ 按出口国家自动匹配高校/科研骨干网/公共机构 → 全球非 CF 开源基建兜底，统一校验 `TLS 1.3 + X25519 + H2 + 短证书链`
 
 - 🪶 **沙盒与双 init 兼容**：低权限 `nexus` 用户沙盒运行，同时适配 systemd 与 Alpine OpenRC
 - 🧰 **零噪静默执行**：异常时自动输出 `/var/log/nexusnode/install.log` 关键日志摘要

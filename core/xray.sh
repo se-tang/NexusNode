@@ -127,10 +127,10 @@ deploy_xray_node() {
         fi
 
         if [[ -z "$sni" ]]; then
-            benchmark_sni sni
-            if [[ "$NON_INTERACTIVE" != "true" ]]; then
-                ui_ask "确认或修改伪装 SNI 域名" "$sni" sni
-            fi
+            prompt_camouflage_sni sni 1
+        elif ! is_allowed_reality_sni "$sni"; then
+            ui_err "Reality SNI 格式无效或属于已排除的 Apple/CDN/动态域名: ${sni}"
+            return 1
         fi
         sni="$(validate_sni "$sni")" || return 1
     fi
