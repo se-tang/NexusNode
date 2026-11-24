@@ -80,15 +80,16 @@ ui_ask() {
     eval "$__resultvar=\"\$input_val\""
 }
 
-# Compute terminal display width (strips ANSI escapes, counts CJK as 2 cols)
+# Compute terminal display width reliably across UTF-8 & C/BusyBox locales (ASCII=1, CJK=2)
 display_width() {
-    local plain
+    local LC_ALL=C
+    local plain ascii_only total_bytes ascii_bytes non_ascii_bytes
     plain=$(printf '%b' "$1" | sed -E $'s/\x1b\\[[0-9;]*m//g')
-    if command -v wc >/dev/null 2>&1 && wc -L </dev/null >/dev/null 2>&1; then
-        printf '%s' "$plain" | wc -L
-    else
-        printf '%s' "${#plain}"
-    fi
+    total_bytes=${#plain}
+    ascii_only=$(printf '%s' "$plain" | tr -d '\200-\377')
+    ascii_bytes=${#ascii_only}
+    non_ascii_bytes=$(( total_bytes - ascii_bytes ))
+    printf '%s' "$(( ascii_bytes + (non_ascii_bytes * 2 / 3) ))"
 }
 
 ui_box_line() {
@@ -99,6 +100,27 @@ ui_box_line() {
     pad=$(( inner_width - w ))
     (( pad < 0 )) && pad=0
     printf "${C_CYAN}│${C_RESET}%b%*s${C_CYAN}│${C_RESET}\n" "$content" "$pad" ""
+}
+
+ui_box_center() {
+    local content="$1"
+    local inner_width=58
+    local w left_pad right_pad
+    w=$(display_width "$content")
+    left_pad=$(( (inner_width - w) / 2 ))
+    (( left_pad < 0 )) && left_pad=0
+    right_pad=$(( inner_width - w - left_pad ))
+    (( right_pad < 0 )) && right_pad=0
+    printf "${C_CYAN}│${C_RESET}%*s%b%*s${C_CYAN}│${C_RESET}\n" "$left_pad" "" "$content" "$right_pad" ""
+}
+
+ui_box_kv_row() {
+    local l_key="$1" l_val="$2" r_key="$3" r_val="$4"
+    local l_val_w l_pad
+    l_val_w=$(display_width "$l_val")
+    l_pad=$(( 15 - l_val_w ))
+    (( l_pad < 0 )) && l_pad=0
+    ui_box_line "$(printf '    %s : %b%*s  %s : %b' "$l_key" "$l_val" "$l_pad" "" "$r_key" "$r_val")"
 }
 
 svc_status_badge() {
@@ -114,30 +136,44 @@ svc_status_badge() {
 # Header Banner
 ui_header() {
     clear
-    local os_info kernel_ver warp_status="未启用" xray_status sb_status
-    os_info=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2 || uname -s)
-    os_info="${os_info:0:44}"
-    kernel_ver=$(uname -r | cut -d'-' -f1)
+    local os_info arch_info kernel_ver warp_status xray_status sb_status socks_status
+    os_info=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2 \
+        | sed -E 's/ GNU\/Linux//; s/^Alpine Linux /Alpine /; s/ \([^)]*\)$//; s/ LTS$//' || uname -s)
+    [[ -z "$os_info" ]] && os_info="$(uname -s)"
+    (( ${#os_info} > 15 )) && os_info="${os_info:0:15}"
+
+    arch_info="$(uname -m 2>/dev/null || echo unknown)"
+    kernel_ver="$(uname -r | cut -d'-' -f1)"
+    (( ${#kernel_ver} > 15 )) && kernel_ver="$(printf '%s' "$kernel_ver" | cut -d'+' -f1)"
+    (( ${#kernel_ver} > 15 )) && kernel_ver="${kernel_ver:0:15}"
+
+    warp_status="${C_GRAY}未启用${C_RESET}"
     if ss -tlpn 2>/dev/null | grep -q '127.0.0.1:40000'; then
-        warp_status="${C_GREEN}已分流 (127.0.0.1:40000)${C_RESET}"
+        warp_status="${C_GREEN}已分流 :40000${C_RESET}"
     fi
     xray_status=$(svc_status_badge "nexus-xray")
     sb_status=$(svc_status_badge "nexus-singbox")
-    local socks_status="${C_GRAY}未启用${C_RESET}"
+
+    socks_status="${C_GRAY}未启用${C_RESET}"
     if [[ -f "${NEXUS_DIR:-/etc/nexusnode}/socks_outbound.conf" ]]; then
         local SOCKS_OUT_HOST="" SOCKS_OUT_PORT="" SOCKS_OUT_SCOPE=""
         source "${NEXUS_DIR:-/etc/nexusnode}/socks_outbound.conf" 2>/dev/null || true
-        [[ -n "$SOCKS_OUT_HOST" ]] && socks_status="${C_GREEN}${SOCKS_OUT_HOST}:${SOCKS_OUT_PORT} (${SOCKS_OUT_SCOPE:-all})${C_RESET}"
+        if [[ -n "$SOCKS_OUT_HOST" ]]; then
+            local socks_addr="${SOCKS_OUT_HOST}:${SOCKS_OUT_PORT}"
+            if (( ${#socks_addr} > 13 )); then
+                socks_addr="已启用 :${SOCKS_OUT_PORT}"
+            fi
+            socks_status="${C_GREEN}${socks_addr}${C_RESET}"
+        fi
     fi
 
     printf "${C_CYAN}╭──────────────────────────────────────────────────────────╮${C_RESET}\n"
-    ui_box_line "  ${C_BOLD}NexusNode v2.0${C_RESET}  · 极简零噪多内核代理部署与运维引擎"
+    ui_box_center "${C_BOLD}NexusNode v2.0${C_RESET} ${C_CYAN}::${C_RESET} 极简零噪多内核代理部署与运维引擎"
     printf "${C_CYAN}├──────────────────────────────────────────────────────────┤${C_RESET}\n"
-    ui_box_line "  系统环境 : ${os_info}"
-    ui_box_line "  内核版本 : $(printf '%-18s' "$kernel_ver") 服务管理 : ${INIT_SYSTEM:-systemd}"
-    ui_box_line "  Xray状态 : ${xray_status}             sing-box : ${sb_status}"
-    ui_box_line "  WARP状态 : ${warp_status}"
-    ui_box_line "  SOCKS出口: ${socks_status}"
+    ui_box_kv_row "系统环境" "${os_info}"      "系统架构" "${arch_info}"
+    ui_box_kv_row "内核版本" "${kernel_ver}"   "服务管理" "${INIT_SYSTEM:-systemd}"
+    ui_box_kv_row "Xray状态" "${xray_status}"  "sing-box" "${sb_status}"
+    ui_box_kv_row "WARP状态" "${warp_status}"  "代理出口" "${socks_status}"
     printf "${C_CYAN}╰──────────────────────────────────────────────────────────╯${C_RESET}\n"
 }
 
