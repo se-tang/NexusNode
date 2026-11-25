@@ -13,6 +13,7 @@ SNI_CURL_CAPS_READY=0
 SNI_CURL_HAS_HTTP2=0
 SNI_CURL_HAS_CURVES=0
 SNI_CURL_HAS_TLSMAX=0
+SNI_CURL_HAS_HAPPY=0
 SNI_CURL_HAS_CERTINFO=0
 SNI_CURL_OPENSSL_ENV=0
 
@@ -197,22 +198,32 @@ sni_region_from_country() {
     case "$cc" in
         HK|MO) echo "hk" ;;
         JP) echo "jp" ;;
-        SG|MY|TH|ID|PH|VN|KH|LA|MM|BN|TL) echo "sg" ;;
+        SG|MY|TH|ID|PH|VN|KH|LA|MM|BN|TL|IN) echo "sg" ;;
         TW) echo "tw" ;;
         KR) echo "kr" ;;
         AU|NZ) echo "au" ;;
         US|CA|MX) echo "us" ;;
         CN) echo "hk" ;;
-        AD|AL|AT|BA|BE|BG|BY|CH|CY|CZ|DE|DK|EE|ES|FI|FR|GB|GR|HR|HU|IE|IS|IT|LI|LT|LU|LV|MC|MD|ME|MK|MT|NL|NO|PL|PT|RO|RS|SE|SI|SK|SM|UA|VA|XK) echo "eu" ;;
-        *) echo "global" ;;
+        AD|AL|AT|BA|BE|BG|BY|CH|CY|CZ|DE|DK|EE|ES|FI|FR|GB|GR|HR|HU|IE|IS|IT|LI|LT|LU|LV|MC|MD|ME|MK|MT|NL|NO|PL|PT|RO|RS|SE|SI|SK|SM|UA|VA|XK|TR|RU) echo "eu" ;;
+        *) echo "all" ;;
     esac
 }
 
 detect_sni_region() {
     local raw cc=""
-    raw=$(curl -q --noproxy '*' -fsSL --connect-timeout 2 --max-time 3 'https://ipwho.is/?fields=country_code' 2>/dev/null || true)
-    if [[ "$raw" =~ \"country_code\"[[:space:]]*:[[:space:]]*\"([A-Za-z]{2})\" ]]; then
-        cc="${BASH_REMATCH[1]}"
+    # 1. Cloudflare trace: ultra-fast, dual-stack, never 429 rate-limited on shared NAT IPs
+    raw=$(curl -q --noproxy '*' -fsSL --connect-timeout 2 --max-time 3 'https://www.cloudflare.com/cdn-cgi/trace' 2>/dev/null \
+        || curl -q --noproxy '*' -fsSL --connect-timeout 2 --max-time 3 'https://1.1.1.1/cdn-cgi/trace' 2>/dev/null || true)
+    if [[ "$raw" =~ (^|$'\n')loc=([A-Za-z]{2})($|$'\r'|$'\n') ]]; then
+        cc="${BASH_REMATCH[2]}"
+        [[ "$cc" == "XX" || "$cc" == "T1" ]] && cc=""
+    fi
+    # 2. Fallbacks if Cloudflare trace is unreachable
+    if [[ -z "$cc" ]]; then
+        raw=$(curl -q --noproxy '*' -fsSL --connect-timeout 2 --max-time 3 'https://ipwho.is/?fields=country_code' 2>/dev/null || true)
+        if [[ "$raw" =~ \"country_code\"[[:space:]]*:[[:space:]]*\"([A-Za-z]{2})\" ]]; then
+            cc="${BASH_REMATCH[1]}"
+        fi
     fi
     if [[ -z "$cc" ]]; then
         raw=$(curl -q --noproxy '*' -fsSL --connect-timeout 2 --max-time 3 'https://api.country.is' 2>/dev/null || true)
@@ -228,11 +239,52 @@ detect_sni_region() {
     sni_region_from_country "$cc"
 }
 
-# Compute container-safe worker concurrency using cgroup v1/v2 & MemAvailable
+# Detect effective memory ceiling (MB) across /proc/meminfo & cgroup v1/v2
+get_effective_mem_mb() {
+    local key val unit mem_mb=0 cg_limit=""
+    if [[ -r /proc/meminfo ]]; then
+        while read -r key val unit _; do
+            if [[ "$key" == "MemTotal:" && "$val" =~ ^[0-9]+$ ]]; then
+                mem_mb=$(( 10#$val / 1024 ))
+                break
+            fi
+        done < /proc/meminfo
+    fi
+    if [[ -r /sys/fs/cgroup/memory.max ]]; then
+        read -r cg_limit < /sys/fs/cgroup/memory.max || cg_limit=""
+        if [[ "$cg_limit" =~ ^[0-9]+$ ]] && (( 10#$cg_limit > 0 && 10#$cg_limit < 1099511627776 )); then
+            local cg_mb=$(( 10#$cg_limit / 1024 / 1024 ))
+            if (( mem_mb == 0 || cg_mb < mem_mb )); then
+                mem_mb="$cg_mb"
+            fi
+        fi
+    fi
+    echo "$mem_mb"
+}
+
+# Detect NAT VPS (shared IPv4 with private local NIC) or <= 256MB micro-container
+is_nat_or_lowmem_box() {
+    local pub_ip="${1:-}"
+    local mem_mb
+    mem_mb="$(get_effective_mem_mb)"
+    if (( mem_mb > 0 && mem_mb <= 256 )); then
+        return 0
+    fi
+    if [[ "$pub_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v ip >/dev/null 2>&1; then
+        local local_v4
+        local_v4="$(ip -4 -o addr show scope global 2>/dev/null | awk '{sub(/\/.*/, "", $4); print $4}' || true)"
+        if [[ -n "$local_v4" ]] && ! printf '%s\n' "$local_v4" | grep -qxF "$pub_ip"; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Compute container-safe worker concurrency (never aborts due to RAM; scales down to 1-3 on 128MB)
 get_safe_sni_jobs() {
     local desired="${1:-8}"
     local jobs="$desired"
-    local key val unit avail_bytes=-1 limit usage free
+    local key val unit avail_bytes=-1 limit usage free inactive_file=0
 
     if [[ -r /proc/meminfo ]]; then
         while read -r key val unit _; do
@@ -246,8 +298,18 @@ get_safe_sni_jobs() {
     if [[ -r /sys/fs/cgroup/memory.max && -r /sys/fs/cgroup/memory.current ]]; then
         read -r limit < /sys/fs/cgroup/memory.max || limit=""
         read -r usage < /sys/fs/cgroup/memory.current || usage=""
-        if [[ "$limit" =~ ^[0-9]+$ && "$usage" =~ ^[0-9]+$ ]]; then
-            free=$(( 10#$limit - 10#$usage ))
+        if [[ -r /sys/fs/cgroup/memory.stat ]]; then
+            while read -r key val _; do
+                if [[ "$key" == "inactive_file" && "$val" =~ ^[0-9]+$ ]]; then
+                    inactive_file=$(( 10#$val ))
+                    break
+                fi
+            done < /sys/fs/cgroup/memory.stat
+        fi
+        if [[ "$limit" =~ ^[0-9]+$ && "$usage" =~ ^[0-9]+$ ]] && (( 10#$limit < 1099511627776 )); then
+            local working_set=$(( 10#$usage - inactive_file ))
+            (( working_set < 0 )) && working_set=0
+            free=$(( 10#$limit - working_set ))
             (( free < 0 )) && free=0
             if (( avail_bytes < 0 || free < avail_bytes )); then
                 avail_bytes="$free"
@@ -255,9 +317,20 @@ get_safe_sni_jobs() {
         fi
     fi
 
+    # Each curl HEAD probe uses ~4 MB RSS; scale concurrency smoothly without aborting on 128MB boxes
     if (( avail_bytes >= 0 )); then
-        local mem_jobs=$(( (avail_bytes - 16 * 1024 * 1024) / (20 * 1024 * 1024) ))
-        (( mem_jobs < 0 )) && mem_jobs=0
+        local avail_mb=$(( avail_bytes / 1024 / 1024 ))
+        local mem_jobs="$jobs"
+        if (( avail_mb < 24 )); then
+            mem_jobs=1
+        elif (( avail_mb < 64 )); then
+            mem_jobs=3
+        elif (( avail_mb < 128 )); then
+            mem_jobs=5
+        else
+            mem_jobs=$(( (avail_mb - 16) / 16 ))
+        fi
+        (( mem_jobs < 1 )) && mem_jobs=1
         (( mem_jobs < jobs )) && jobs="$mem_jobs"
     fi
 
@@ -266,20 +339,17 @@ get_safe_sni_jobs() {
         read -r usage < /sys/fs/cgroup/pids.current || usage=""
         if [[ "$limit" =~ ^[0-9]+$ && "$usage" =~ ^[0-9]+$ ]]; then
             free=$(( 10#$limit - 10#$usage ))
-            if (( free < 4 )); then
+            if (( free < 3 )); then
                 echo 0
                 return 1
             fi
-            local pid_jobs=$(( (free - 4) / 3 ))
+            local pid_jobs=$(( (free - 3) / 3 ))
             (( pid_jobs < 1 )) && pid_jobs=1
             (( pid_jobs < jobs )) && jobs="$pid_jobs"
         fi
     fi
 
-    if (( jobs < 1 )); then
-        echo 0
-        return 1
-    fi
+    (( jobs < 1 )) && jobs=1
     echo "$jobs"
 }
 
@@ -308,11 +378,14 @@ detect_sni_curl_caps() {
         fi
     fi
 
+    help_out="$(curl --help tls 2>&1 || curl --help all 2>&1 || curl --help 2>&1 || true)"
     if [[ "$is_openssl_like" -eq 1 ]]; then
-        help_out="$(curl --help tls 2>&1 || curl --help all 2>&1 || curl --help 2>&1 || true)"
         [[ "$help_out" == *"--curves"* ]] && SNI_CURL_HAS_CURVES=1
         [[ "$help_out" == *"--tls-max"* ]] && SNI_CURL_HAS_TLSMAX=1
     fi
+    local conn_help
+    conn_help="$(curl --help connection 2>&1 || printf '%s' "$help_out")"
+    [[ "$conn_help" == *"--happy-eyeballs-timeout-ms"* ]] && SNI_CURL_HAS_HAPPY=1
 
     if [[ "$SNI_CURL_HAS_HTTP2" -eq 0 ]] && ! command -v openssl >/dev/null 2>&1; then
         return 1
@@ -325,23 +398,24 @@ detect_sni_curl_caps() {
 probe_sni_target() {
     local host="$1"
     local samples="${2:-2}"
-    local limit="${3:-3}"
+    local limit="${3:-2}"
+    local max_limit=$(( limit + 2 ))
     is_allowed_reality_sni "$host" || return 1
     detect_sni_curl_caps || return 1
 
-    local round out meta verify http_ver elapsed chain best_ms=2147483647 best_chain=0 cur_ms hdr_lower
+    local round out meta verify http_ver elapsed chain best_ms=2147483647 best_chain=0 cur_ms hdr_lower rc=0
 
     # Fallback path when libcurl lacks HTTP2 feature (uses openssl s_client for TLS1.3+H2+X25519 + curl for timing/CA/CDN)
     if [[ "$SNI_CURL_HAS_HTTP2" -eq 0 ]]; then
         local tls_out
-        tls_out=$(timeout "$limit" openssl s_client -connect "${host}:443" -servername "$host" -tls1_3 -alpn h2 </dev/null 2>/dev/null | tr -d '\0' || true)
+        tls_out=$(timeout "$max_limit" openssl s_client -connect "${host}:443" -servername "$host" -tls1_3 -alpn h2 </dev/null 2>/dev/null | tr -d '\0' || true)
         [[ "$tls_out" == *"TLSv1.3"* && "$tls_out" == *"ALPN protocol: h2"* ]] || return 1
         printf '%s' "$tls_out" | grep -qi "X25519" || return 1
         best_chain="$(printf '%s\n' "$tls_out" | awk '/^Certificate chain/,/^---/ {if ($1 ~ /^[0-9]+$/) c++} END {print c+0}')"
 
         local fmt_fb=$'\n__NX_META__\t%{ssl_verify_result}\t%{time_appconnect}'
         for (( round = 0; round < samples; round++ )); do
-            out=$(LC_ALL=C curl -q --noproxy '*' -sS --head --connect-timeout "$limit" --max-time "$limit" \
+            out=$(LC_ALL=C curl -q --noproxy '*' -sS --head --connect-timeout "$limit" --max-time "$max_limit" \
                 --write-out "$fmt_fb" "https://${host}/" 2>/dev/null) || {
                 (( round > 0 )) && continue || return 1
             }
@@ -365,23 +439,36 @@ probe_sni_target() {
     local -a extra_args=(--http2 --tlsv1.3)
     [[ "$SNI_CURL_HAS_TLSMAX" -eq 1 ]] && extra_args+=(--tls-max 1.3)
     [[ "$SNI_CURL_HAS_CURVES" -eq 1 ]] && extra_args+=(--curves X25519)
+    [[ "$SNI_CURL_HAS_HAPPY" -eq 1 ]] && extra_args+=(--happy-eyeballs-timeout-ms 500)
 
     local fmt=$'\n__NX_META__\t%{ssl_verify_result}\t%{http_version}\t%{time_appconnect}\t0'
     [[ "$SNI_CURL_HAS_CERTINFO" -eq 1 ]] && fmt=$'\n__NX_META__\t%{ssl_verify_result}\t%{http_version}\t%{time_appconnect}\t%{num_certs}'
 
     for (( round = 0; round < samples; round++ )); do
+        rc=0
         if [[ "$SNI_CURL_OPENSSL_ENV" -eq 1 ]]; then
             out=$(LC_ALL=C CURL_SSL_BACKEND=openssl curl -q --noproxy '*' -sS --head \
-                --connect-timeout "$limit" --max-time "$limit" "${extra_args[@]}" \
-                --write-out "$fmt" "https://${host}/" 2>/dev/null) || {
-                (( round > 0 )) && continue || return 1
-            }
+                --connect-timeout "$limit" --max-time "$max_limit" "${extra_args[@]}" \
+                --write-out "$fmt" "https://${host}/" 2>/dev/null) || rc=$?
         else
             out=$(LC_ALL=C curl -q --noproxy '*' -sS --head \
-                --connect-timeout "$limit" --max-time "$limit" "${extra_args[@]}" \
-                --write-out "$fmt" "https://${host}/" 2>/dev/null) || {
-                (( round > 0 )) && continue || return 1
-            }
+                --connect-timeout "$limit" --max-time "$max_limit" "${extra_args[@]}" \
+                --write-out "$fmt" "https://${host}/" 2>/dev/null) || rc=$?
+        fi
+
+        # If local libcurl rejects --curves option/engine (2/4/59), retry without --curves
+        if (( rc == 2 || rc == 4 || rc == 59 )) && [[ "$SNI_CURL_HAS_CURVES" -eq 1 ]]; then
+            local -a fallback_args=(--http2 --tlsv1.3)
+            [[ "$SNI_CURL_HAS_TLSMAX" -eq 1 ]] && fallback_args+=(--tls-max 1.3)
+            [[ "$SNI_CURL_HAS_HAPPY" -eq 1 ]] && fallback_args+=(--happy-eyeballs-timeout-ms 500)
+            rc=0
+            out=$(LC_ALL=C curl -q --noproxy '*' -sS --head \
+                --connect-timeout "$limit" --max-time "$max_limit" "${fallback_args[@]}" \
+                --write-out "$fmt" "https://${host}/" 2>/dev/null) || rc=$?
+        fi
+
+        if (( rc != 0 )); then
+            (( round > 0 )) && continue || return 1
         fi
 
         meta="$(printf '%s\n' "$out" | tr -d '\r' | awk -F'\t' '$1 == "__NX_META__" {print $2 "\t" $3 "\t" $4 "\t" $5}' | tail -n 1)"
@@ -580,7 +667,8 @@ scan_institutional_sni() {
 
     local idx=0 total="${#entries[@]}" slot
     local -a pids=() deadlines=()
-    local samples=2 timeout_sec=3
+    local samples=2 timeout_sec=2
+    (( jobs <= 3 )) && samples=1
     while (( idx < total )); do
         pids=()
         deadlines=()
@@ -600,7 +688,7 @@ scan_institutional_sni() {
                 fi
             ) &
             pids+=("$!")
-            deadlines+=("$(( SECONDS + samples * timeout_sec + 3 ))")
+            deadlines+=("$(( SECONDS + samples * (timeout_sec + 2) + 3 ))")
         done
 
         local pending="${#pids[@]}" s wpid
@@ -636,6 +724,19 @@ scan_institutional_sni() {
     printf '%s\n' "$results"
 }
 
+region_static_fallbacks() {
+    case "${1:-}" in
+        hk) printf '%s\n' "www.hku.hk" "www.hkust.edu.hk" "www.cityu.edu.hk" "www.kernel.org" ;;
+        jp) printf '%s\n' "www.sinet.ad.jp" "www.kyoto-u.ac.jp" "www.nii.ac.jp" "www.kernel.org" ;;
+        sg) printf '%s\n' "www.nus.edu.sg" "www.smu.edu.sg" "www.sutd.edu.sg" "www.kernel.org" ;;
+        tw) printf '%s\n' "www.ncku.edu.tw" "www.ncu.edu.tw" "www.twnic.tw" "www.kernel.org" ;;
+        kr) printf '%s\n' "www.snu.ac.kr" "www.sinet.ad.jp" "www.nii.ac.jp" "www.kernel.org" ;;
+        us) printf '%s\n' "www.ucar.edu" "www.internet2.edu" "www.ucla.edu" "www.kernel.org" ;;
+        au) printf '%s\n' "www.waikato.ac.nz" "www.sydney.edu.au" "www.auckland.ac.nz" "www.kernel.org" ;;
+        *)  printf '%s\n' "${STATIC_FALLBACK_SNI[@]}" ;;
+    esac
+}
+
 # Benchmark SNI: 3-tier waterfall (Same-Subnet /24 -> Regional Edu/Research -> Global Public Infra)
 benchmark_sni() {
     local __out_var="$1"
@@ -649,14 +750,19 @@ benchmark_sni() {
     local best_chain="0"
     local source_tag="静态预设兜底"
     local ranked_lines=""
+    local resolved_reg="$region"
     SNI_TOP_CANDIDATES=()
 
     tput civis 2>/dev/null || true
 
-    # Tier 1: Same-subnet (/24) clean neighbor scan (unless mode is edu/inst)
+    local pub_ip=""
     if [[ "$mode" != "edu" && "$mode" != "inst" ]]; then
-        local pub_ip=""
         pub_ip=$(get_public_ip 2>/dev/null || true)
+    fi
+
+    # Tier 1: Same-subnet (/24) clean neighbor scan
+    # In auto mode, skip 48-IP brute scan on NAT / <=256MB micro-containers to save conntrack ports & RAM
+    if [[ "$mode" == "neighbor" ]] || { [[ "$mode" == "auto" ]] && ! is_nat_or_lowmem_box "$pub_ip"; }; then
         if [[ "$pub_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 正在扫描同网段(/24)干净伪装域名..."
             ranked_lines="$(scan_neighbor_sni "$pub_ip" || true)"
@@ -665,7 +771,6 @@ benchmark_sni() {
 
     # Tier 2 & 3: Regional Universities / Research Bases + Global Public Infra
     if [[ -z "$ranked_lines" ]]; then
-        local resolved_reg="$region"
         if [[ "$resolved_reg" == "auto" ]]; then
             printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 正在识别出口地区并匹配高校/科研基地种子库..."
             resolved_reg="$(detect_sni_region || echo "all")"
@@ -673,14 +778,14 @@ benchmark_sni() {
         local reg_label
         reg_label="$(printf '%s' "$resolved_reg" | tr 'a-z' 'A-Z')"
         [[ "$resolved_reg" == "all" || "$resolved_reg" == "global" ]] && reg_label="全球"
-        printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 正在优选 %s 高校、科研基地与公共机构域名 (TLS1.3+X25519+H2)..." "$reg_label"
+        printf "${C_CLEAR_LINE}${C_CYAN}⠋${C_RESET} 正在优选 %s 高校、科研基地与公共机构域名..." "$reg_label"
         ranked_lines="$(scan_institutional_sni "$resolved_reg" || true)"
     fi
 
     tput cnorm 2>/dev/null || true
 
     if [[ -n "$ranked_lines" ]]; then
-        local first_line line m d c t
+        local first_line m d c t
         first_line="$(printf '%s\n' "$ranked_lines" | head -n 1)"
         IFS=$'\t' read -r best_time best_domain best_chain source_tag <<< "$first_line"
         while IFS=$'\t' read -r m d c t; do
@@ -688,7 +793,10 @@ benchmark_sni() {
             (( ${#SNI_TOP_CANDIDATES[@]} >= 5 )) && break
         done <<< "$ranked_lines"
     else
-        SNI_TOP_CANDIDATES=("${STATIC_FALLBACK_SNI[@]}")
+        while IFS= read -r d; do
+            [[ -n "$d" ]] && SNI_TOP_CANDIDATES+=("$d")
+        done < <(region_static_fallbacks "$resolved_reg")
+        best_domain="${SNI_TOP_CANDIDATES[0]:-${STATIC_FALLBACK_SNI[0]}}"
     fi
 
     local chain_badge=""
